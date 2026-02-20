@@ -7,6 +7,7 @@ repository.workspace = true
 description.workspace = true
 license.workspace = true
 homepage.workspace = true
+build = "build.rs"
 
 [package.metadata.wix]
 upgrade-guid = "D8750378-F78B-41CD-8A5D-2DF4374DCA65"
@@ -25,3 +26,6 @@ path = "src/cli.rs"
 [dependencies]
 rindrive_cli = { path = "../cli" }
 rindrive_gui = { path = "../gui" }
+
+[build-dependencies]
+winres = { workspace = true }

@@ -6,5 +6,13 @@
         "rindrive": "app",
         "wix": "windows",
         "worker": "controller"
-    }
+    },
+    "conventionalCommits.scopes": [
+        "core",
+        "cli",
+        "gui",
+        "windows",
+        "linux",
+        "macos",
+    ]
 }

@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["usb", "storage", "verification", "fake-drive", "hardware"]
 categories = ["command-line-utilities", "hardware-support", "filesystem"]
 license = "MIT"
-exclude = ["/.github/", "/pkg/wix"]
+exclude = ["/.github/", "/pkg/"]
 edition = "2024"
 
 [workspace]
@@ -35,6 +35,7 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Ioctl",
     "Win32_Security",
 ] }
+winres = "0.1"
 rand = "0.10"
 thiserror = "2.0"
 sysinfo = "0.38.2"
