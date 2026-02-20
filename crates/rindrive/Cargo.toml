@@ -1,0 +1,27 @@
+[package]
+name = "rindrive"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+description.workspace = true
+license.workspace = true
+homepage.workspace = true
+
+[package.metadata.wix]
+upgrade-guid = "D8750378-F78B-41CD-8A5D-2DF4374DCA65"
+path-guid = "0C6093A6-103E-4EAD-8F96-0C3866D89F63"
+license = "../../pkg/windows/license.txt"
+eula = "../../pkg/windows/eula.rtf"
+
+[[bin]]
+name = "rindrive"
+path = "src/main.rs"
+
+[[bin]]
+name = "rin"
+path = "src/cli.rs"
+
+[dependencies]
+rindrive_cli = { path = "../cli" }
+rindrive_gui = { path = "../gui" }

@@ -1,0 +1,327 @@
+use crate::app::App;
+use crate::message::Message;
+use crate::state::AppState;
+use iced::widget::{
+    Space, button, canvas, column, container, pick_list, progress_bar, row, text, text_input,
+};
+use iced::{Alignment, Color, Element, Length, Point, Rectangle, Size, Theme, mouse};
+use rindrive_core::engine::EngineType;
+
+const COLOR_BG_SIDEBAR: Color = Color::from_rgb(0.11, 0.11, 0.11);
+const COLOR_BG_MAP: Color = Color::from_rgb(0.05, 0.05, 0.05);
+const COLOR_ACCENT: Color = Color::from_rgb(0.25, 0.65, 1.0);
+const COLOR_VALID: Color = Color::from_rgb(0.0, 0.8, 0.4);
+const COLOR_INVALID: Color = Color::from_rgb(0.9, 0.25, 0.25);
+const COLOR_PENDING: Color = Color::from_rgb(0.15, 0.15, 0.15);
+
+pub fn view(app: &App) -> Element<'static, Message> {
+    let header = column![
+        text("RINDRIVE")
+            .size(30)
+            .font(iced::font::Font::MONOSPACE)
+            .style(|_| text::Style {
+                color: Some(Color::WHITE)
+            }),
+        text("Storage Integrity Verifier")
+            .size(12)
+            .style(text::secondary),
+        Space::new().height(8),
+        view_status_badge(&app.log),
+    ]
+    .spacing(2);
+
+    let settings_content = column![
+        text("CONFIGURATION")
+            .size(11)
+            .font(iced::font::Font::MONOSPACE)
+            .style(text::secondary),
+        row![
+            input_group("Sections", &app.sections_input, Message::SectionsChanged),
+            input_group(
+                "Buffer (KB)",
+                &app.buffer_size_input,
+                Message::BufferSizeChanged
+            ),
+        ]
+        .spacing(10),
+        column![
+            text("Scan Engine").size(11).style(text::secondary),
+            pick_list(
+                &[EngineType::SpotCheck, EngineType::FullScan][..],
+                Some(app.selected_engine),
+                Message::EngineSelected
+            )
+            .text_size(13)
+            .padding(6)
+            .width(Length::Fill)
+        ]
+        .spacing(4)
+    ]
+    .spacing(12);
+
+    let settings_panel = container(settings_content)
+        .padding(15)
+        .style(|theme: &Theme| {
+            let palette = theme.extended_palette();
+            container::Style {
+                background: Some(palette.background.weak.color.into()),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }
+        });
+
+    let manual_btn = button(text("📂 Select Drive").size(14).center())
+        .on_press(Message::SelectManual)
+        .style(button::secondary)
+        .padding(12)
+        .width(Length::Fill);
+
+    let mut start_btn = button(
+        text("🚀 START AUDIT")
+            .size(14)
+            .font(iced::font::Font::MONOSPACE)
+            .center(),
+    )
+    .style(button::primary)
+    .padding(12)
+    .width(Length::Fill);
+
+    if matches!(app.state, AppState::Ready | AppState::Finished) {
+        start_btn = start_btn.on_press(Message::StartAudit);
+    }
+
+    let progress_section = column![
+        row![
+            text("PROGRESS")
+                .size(11)
+                .font(iced::font::Font::MONOSPACE)
+                .style(text::secondary),
+            Space::width(Space::new(), Length::Fill),
+            text(format!("{:.1}%", app.progress))
+                .size(12)
+                .style(text::secondary)
+        ],
+        Space::new().height(4),
+        container(progress_bar(0.0..=100.0, app.progress).style(style_progress_bar)).height(6)
+    ];
+
+    let controls_panel = column![
+        Space::new().height(8),
+        progress_section,
+        Space::new().height(15),
+        manual_btn,
+        Space::new().height(8),
+        start_btn
+    ];
+
+    let sidebar = container(column![
+        header,
+        Space::new().height(20),
+        settings_panel,
+        Space::width(Space::new(), Length::Fill),
+        controls_panel
+    ])
+    .width(Length::Fixed(280.0))
+    .height(Length::Fill)
+    .padding(20)
+    .style(|_| container::Style {
+        background: Some(COLOR_BG_SIDEBAR.into()),
+        ..Default::default()
+    });
+
+    let map_legend = row![
+        legend_badge(COLOR_VALID, "Valid"),
+        legend_badge(COLOR_INVALID, "Bad"),
+        legend_badge(COLOR_PENDING, "Wait"),
+    ]
+    .spacing(15);
+
+    let map_area = container(
+        canvas(BlockMap {
+            blocks: app.block_map.clone(),
+        })
+        .width(Length::Fill)
+        .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding(10)
+    .style(|theme: &Theme| {
+        let palette = theme.extended_palette();
+        container::Style {
+            background: Some(COLOR_BG_MAP.into()),
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 0.0.into(),
+            },
+            ..Default::default()
+        }
+    });
+
+    let main_content = column![
+        container(map_legend)
+            .padding([10, 20])
+            .align_x(Alignment::End)
+            .width(Length::Fill),
+        map_area
+    ];
+
+    row![sidebar, main_content]
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .into()
+}
+
+fn input_group<'a>(
+    label: &'a str,
+    value: &str,
+    on_change: fn(String) -> Message,
+) -> Element<'a, Message> {
+    column![
+        text(label).size(12).style(text::secondary),
+        text_input("", value)
+            .on_input(on_change)
+            .padding(8)
+            .size(14)
+            .style(|theme, status| {
+                let mut style = text_input::default(theme, status);
+                style.border.radius = 4.0.into();
+                style
+            })
+    ]
+    .spacing(4)
+    .width(Length::Fill)
+    .into()
+}
+
+fn legend_badge<'a>(color: Color, label: &'a str) -> Element<'a, Message> {
+    row![
+        container(Space::new())
+            .width(12)
+            .height(12)
+            .style(move |_| {
+                container::Style {
+                    background: Some(color.into()),
+                    border: iced::Border {
+                        radius: 3.0.into(),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                }
+            }),
+        text(label).size(12).style(text::secondary)
+    ]
+    .spacing(6)
+    .align_y(Alignment::Center)
+    .into()
+}
+
+fn view_status_badge(log: &str) -> Element<'static, Message> {
+    let (icon, color): (&str, Color) = if log.contains("❌") {
+        ("⚠️", COLOR_INVALID)
+    } else if log.contains("✅") {
+        ("🛡️", COLOR_VALID)
+    } else {
+        ("ℹ️", COLOR_ACCENT)
+    };
+
+    container(
+        row![
+            text(icon).size(16),
+            text(log.to_string())
+                .size(12)
+                .style(move |_| text::Style { color: Some(color) })
+        ]
+        .spacing(8)
+        .align_y(Alignment::Center),
+    )
+    .padding([6, 10])
+    .style(move |_| container::Style {
+        background: Some(color.scale_alpha(0.08).into()),
+        border: iced::Border {
+            color: color.scale_alpha(0.2),
+            width: 1.0,
+            radius: 4.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
+}
+
+fn style_progress_bar(_theme: &Theme) -> progress_bar::Style {
+    progress_bar::Style {
+        background: COLOR_PENDING.into(),
+        bar: COLOR_ACCENT.into(),
+        border: iced::Border::default(),
+    }
+}
+
+struct BlockMap {
+    blocks: Vec<u8>,
+}
+
+impl canvas::Program<Message> for BlockMap {
+    type State = ();
+
+    fn draw(
+        &self,
+        _state: &(),
+        renderer: &iced::Renderer,
+        _theme: &Theme,
+        bounds: Rectangle,
+        _cursor: mouse::Cursor,
+    ) -> Vec<canvas::Geometry> {
+        let mut frame = canvas::Frame::new(renderer, bounds.size());
+        let total = self.blocks.len();
+
+        if total == 0 {
+            return vec![];
+        }
+
+        let screen_ratio = bounds.width / bounds.height;
+        let rows = (total as f32 / screen_ratio).sqrt().ceil();
+        let mut cols = (total as f32 / rows).ceil();
+
+        while (rows * cols) < total as f32 {
+            cols += 1.0;
+        }
+
+        let w_space = bounds.width / cols;
+        let h_space = bounds.height / rows;
+        let box_size = w_space.min(h_space);
+
+        let spacing = if box_size < 3.0 { 0.0 } else { 1.0 };
+        let draw_size = (box_size - spacing).max(1.0);
+
+        let grid_width = cols * box_size;
+        let grid_height = rows * box_size;
+        let start_x = (bounds.width - grid_width) / 2.0;
+        let start_y = (bounds.height - grid_height) / 2.0;
+
+        for (i, &status) in self.blocks.iter().enumerate() {
+            let col = i as f32 % cols;
+            let row = (i as f32 / cols).floor();
+
+            let x = start_x + (col * box_size);
+            let y = start_y + (row * box_size);
+
+            if y > bounds.height {
+                break;
+            }
+
+            let color = match status {
+                1 => COLOR_VALID,
+                2 => COLOR_INVALID,
+                _ => COLOR_PENDING,
+            };
+
+            frame.fill_rectangle(Point::new(x, y), Size::new(draw_size, draw_size), color);
+        }
+
+        vec![frame.into_geometry()]
+    }
+}

@@ -1,0 +1,15 @@
+[package]
+name = "rindrive_gui"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[package.metadata.dist]
+dist = false
+
+[dependencies]
+rindrive_core = { workspace = true }
+iced = { workspace = true }
+rfd = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }

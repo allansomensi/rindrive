@@ -1,0 +1,58 @@
+[workspace.package]
+description = "A cross-platform utility to verify the integrity and true capacity of USB flash drives."
+version = "0.1.0"
+authors = ["Allan Somensi <allansomensidev@proton.me>"]
+documentation = "https://github.com/allansomensi/rindrive"
+homepage = "https://github.com/allansomensi/rindrive"
+repository = "https://github.com/allansomensi/rindrive"
+readme = "README.md"
+keywords = ["usb", "storage", "verification", "fake-drive", "hardware"]
+categories = ["command-line-utilities", "hardware-support", "filesystem"]
+license = "MIT"
+exclude = ["/.github/", "/pkg/wix"]
+edition = "2024"
+
+[workspace]
+members = ["crates/core", "crates/cli", "crates/gui", "crates/rindrive"]
+resolver = "2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.dist]
+inherits = "release"
+lto = "thin"
+
+[workspace.dependencies]
+windows = { version = "0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Ioctl",
+    "Win32_Security",
+] }
+rand = "0.10"
+thiserror = "2.0"
+sysinfo = "0.38.2"
+rindrive_core = { path = "crates/core" }
+clap = { version = "4.5.60", features = ["derive"] }
+colored = "3.1.1"
+indicatif = "0.18"
+iced = { version = "0.14", features = ["tokio", "debug", "advanced", "canvas"] }
+rfd = "0.17.2"
+tokio = { version = "1.0", features = ["full"] }
+tokio-stream = "0.1.18"
+
+# Dev
+cargo-husky = { version = "1.5.0", default-features = false, features = [
+    "run-for-all",
+    "prepush-hook",
+    "precommit-hook",
+    "run-cargo-test",
+    "run-cargo-clippy",
+    "run-cargo-fmt",
+] }

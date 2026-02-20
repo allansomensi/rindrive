@@ -1,0 +1,20 @@
+[package]
+name = "rindrive_core"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[package.metadata.dist]
+dist = false
+
+[dependencies]
+clap = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+sysinfo = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[dev-dependencies]
+cargo-husky = { workspace = true }

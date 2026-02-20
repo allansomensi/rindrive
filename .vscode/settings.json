@@ -1,0 +1,10 @@
+{
+    "material-icon-theme.folders.associations": {
+        "crates": "components",
+        "engine": "controller",
+        "platforms": "client",
+        "rindrive": "app",
+        "wix": "windows",
+        "worker": "controller"
+    }
+}
