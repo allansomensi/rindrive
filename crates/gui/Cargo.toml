@@ -9,6 +9,7 @@ dist = false
 
 [dependencies]
 rindrive_core = { workspace = true }
+rindrive_i18n = { workspace = true }
 iced = { workspace = true }
 rfd = { workspace = true }
 tokio = { workspace = true }

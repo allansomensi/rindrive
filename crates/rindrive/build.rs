@@ -3,7 +3,7 @@ fn main() {
 }
 
 fn set_windows_exe_options() {
-    static MANIFEST: &str = "pkg/windows/manifest.xml";
+    static MANIFEST: &str = "../../pkg/windows/manifest.xml";
 
     let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let profile = std::env::var("PROFILE").unwrap_or_default();

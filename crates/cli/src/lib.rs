@@ -99,7 +99,7 @@ fn perform_audit(mount_point: &str, args: &Args) -> Result<(), CliError> {
             pb.finish_and_clear();
 
             let report = report_result.map_err(|e| {
-                rindrive_core::error::AuditError::Platform(format!("Engine Failure: {}", e))
+                rindrive_core::error::AuditError::Platform(format!("Engine Failure: {e}"))
             })?;
 
             display::render_report(&report);

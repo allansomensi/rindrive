@@ -6,6 +6,7 @@ use iced::widget::{
 };
 use iced::{Alignment, Color, Element, Length, Point, Rectangle, Size, Theme, mouse};
 use rindrive_core::engine::EngineType;
+use rindrive_i18n::fl;
 
 const COLOR_BG_SIDEBAR: Color = Color::from_rgb(0.11, 0.11, 0.11);
 const COLOR_BG_MAP: Color = Color::from_rgb(0.05, 0.05, 0.05);
@@ -16,36 +17,40 @@ const COLOR_PENDING: Color = Color::from_rgb(0.15, 0.15, 0.15);
 
 pub fn view(app: &App) -> Element<'static, Message> {
     let header = column![
-        text("RINDRIVE")
+        text(fl!("app-title"))
             .size(30)
             .font(iced::font::Font::MONOSPACE)
             .style(|_| text::Style {
                 color: Some(Color::WHITE)
             }),
-        text("Storage Integrity Verifier")
-            .size(12)
-            .style(text::secondary),
+        text(fl!("app-subtitle")).size(12).style(text::secondary),
         Space::new().height(8),
         view_status_badge(&app.log),
     ]
     .spacing(2);
 
     let settings_content = column![
-        text("CONFIGURATION")
+        text(fl!("settings-title"))
             .size(11)
             .font(iced::font::Font::MONOSPACE)
             .style(text::secondary),
         row![
-            input_group("Sections", &app.sections_input, Message::SectionsChanged),
             input_group(
-                "Buffer (KB)",
+                fl!("settings-sections-label"),
+                &app.sections_input,
+                Message::SectionsChanged
+            ),
+            input_group(
+                fl!("settings-buffer-label"),
                 &app.buffer_size_input,
                 Message::BufferSizeChanged
             ),
         ]
         .spacing(10),
         column![
-            text("Scan Engine").size(11).style(text::secondary),
+            text(fl!("settings-engine-label"))
+                .size(11)
+                .style(text::secondary),
             pick_list(
                 &[EngineType::SpotCheck, EngineType::FullScan][..],
                 Some(app.selected_engine),
@@ -73,14 +78,14 @@ pub fn view(app: &App) -> Element<'static, Message> {
             }
         });
 
-    let manual_btn = button(text("📂 Select Drive").size(14).center())
+    let manual_btn = button(text(fl!("btn-select-drive")).size(14).center())
         .on_press(Message::SelectManual)
         .style(button::secondary)
         .padding(12)
         .width(Length::Fill);
 
     let mut start_btn = button(
-        text("🚀 START AUDIT")
+        text(fl!("btn-start-audit"))
             .size(14)
             .font(iced::font::Font::MONOSPACE)
             .center(),
@@ -95,7 +100,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
 
     let progress_section = column![
         row![
-            text("PROGRESS")
+            text(fl!("progress-title"))
                 .size(11)
                 .font(iced::font::Font::MONOSPACE)
                 .style(text::secondary),
@@ -133,9 +138,9 @@ pub fn view(app: &App) -> Element<'static, Message> {
     });
 
     let map_legend = row![
-        legend_badge(COLOR_VALID, "Valid"),
-        legend_badge(COLOR_INVALID, "Bad"),
-        legend_badge(COLOR_PENDING, "Wait"),
+        legend_badge(COLOR_VALID, fl!("legend-valid")),
+        legend_badge(COLOR_INVALID, fl!("legend-bad")),
+        legend_badge(COLOR_PENDING, fl!("legend-wait")),
     ]
     .spacing(15);
 
@@ -177,7 +182,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
 }
 
 fn input_group<'a>(
-    label: &'a str,
+    label: String,
     value: &str,
     on_change: fn(String) -> Message,
 ) -> Element<'a, Message> {
@@ -198,7 +203,7 @@ fn input_group<'a>(
     .into()
 }
 
-fn legend_badge<'a>(color: Color, label: &'a str) -> Element<'a, Message> {
+fn legend_badge<'a>(color: Color, label: String) -> Element<'a, Message> {
     row![
         container(Space::new())
             .width(12)

@@ -1,0 +1,12 @@
+app-title = RINDRIVE
+app-subtitle = Storage Integrity Verifier
+settings-title = CONFIGURATION
+settings-sections-label = Sections
+settings-buffer-label = Buffer (KB)
+settings-engine-label = Scan Engine
+btn-select-drive = 📂 Select Drive
+btn-start-audit = 🚀 START AUDIT
+progress-title = PROGRESS
+legend-valid = Valid
+legend-bad = Bad
+legend-wait = Wait

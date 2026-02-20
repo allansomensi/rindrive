@@ -26,6 +26,7 @@ path = "src/cli.rs"
 [dependencies]
 rindrive_cli = { path = "../cli" }
 rindrive_gui = { path = "../gui" }
+rindrive_i18n = { path = "../i18n" }
 
 [build-dependencies]
 winres = { workspace = true }

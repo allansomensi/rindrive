@@ -13,7 +13,13 @@ exclude = ["/.github/", "/pkg/"]
 edition = "2024"
 
 [workspace]
-members = ["crates/core", "crates/cli", "crates/gui", "crates/rindrive"]
+members = [
+    "crates/core",
+    "crates/cli",
+    "crates/gui",
+    "crates/i18n",
+    "crates/rindrive",
+]
 resolver = "2"
 
 [profile.release]
@@ -28,6 +34,10 @@ inherits = "release"
 lto = "thin"
 
 [workspace.dependencies]
+rindrive_core = { path = "crates/core" }
+rindrive_i18n = { path = "crates/i18n" }
+
+# Windows
 windows = { version = "0.62.2", features = [
     "Win32_Foundation",
     "Win32_Storage_FileSystem",
@@ -36,17 +46,30 @@ windows = { version = "0.62.2", features = [
     "Win32_Security",
 ] }
 winres = "0.1"
-rand = "0.10"
-thiserror = "2.0"
-sysinfo = "0.38.2"
-rindrive_core = { path = "crates/core" }
+
+# CLI
 clap = { version = "4.5.60", features = ["derive"] }
 colored = "3.1.1"
 indicatif = "0.18"
+
+# GUI
 iced = { version = "0.14", features = ["tokio", "debug", "advanced", "canvas"] }
 rfd = "0.17.2"
 tokio = { version = "1.0", features = ["full"] }
 tokio-stream = "0.1.18"
+
+# i18n
+i18n-embed = { version = "0.16", features = [
+    "fluent-system",
+    "desktop-requester",
+] }
+i18n-embed-fl = "0.10"
+rust-embed = "8.9"
+
+# Utils
+rand = "0.10"
+thiserror = "2.0"
+sysinfo = "0.38.2"
 
 # Dev
 cargo-husky = { version = "1.5.0", default-features = false, features = [

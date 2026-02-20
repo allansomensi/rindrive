@@ -1,0 +1,12 @@
+app-title = RINDRIVE
+app-subtitle = Verificador de Integridade
+settings-title = CONFIGURAÇÕES
+settings-sections-label = Seções
+settings-buffer-label = Buffer (KB)
+settings-engine-label = Motor de Verificação
+btn-select-drive = 📂 Selecionar Unidade
+btn-start-audit = 🚀 INICIAR AUDITORIA
+progress-title = PROGRESSO
+legend-valid = Válido
+legend-bad = Ruim
+legend-wait = Aguardando
