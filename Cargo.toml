@@ -47,6 +47,9 @@ windows = { version = "0.62.2", features = [
 ] }
 winres = "0.1"
 
+# Linux
+libc = "0.2"
+
 # CLI
 clap = { version = "4.5.60", features = ["derive"] }
 colored = "3.1.1"

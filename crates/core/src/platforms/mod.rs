@@ -29,6 +29,12 @@ mod windows;
 #[cfg(target_os = "windows")]
 pub use windows::WindowsPhysicalDrive as PlatformDrive;
 
+// ================= LINUX =================
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "linux")]
+pub use linux::LinuxPhysicalDrive as PlatformDrive;
+
 /// Factory function to open a drive, returning a platform-specific implementation.
 ///
 /// This function handles the logic of selecting the correct driver for the current
@@ -41,5 +47,16 @@ pub fn open_drive(mount_point: &str) -> Result<Box<dyn PhysicalDrive>, String> {
     {
         let drive = PlatformDrive::open(mount_point)?;
         Ok(Box::new(drive))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let drive = PlatformDrive::open(mount_point)?;
+        Ok(Box::new(drive))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        Err("Operating system not currently supported.".into())
     }
 }

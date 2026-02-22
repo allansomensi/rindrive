@@ -2938,6 +2938,7 @@ version = "0.1.0"
 dependencies = [
  "cargo-husky",
  "clap",
+ "libc",
  "rand",
  "sysinfo",
  "thiserror 2.0.18",
