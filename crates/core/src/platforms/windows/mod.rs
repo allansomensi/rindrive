@@ -1,6 +1,8 @@
 #[cfg(target_os = "windows")]
 use super::PhysicalDrive;
 #[cfg(target_os = "windows")]
+use rindrive_i18n::fl;
+#[cfg(target_os = "windows")]
 use std::io;
 #[cfg(target_os = "windows")]
 use windows::{
@@ -71,7 +73,7 @@ impl WindowsPhysicalDrive {
                 FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH,
                 None,
             )
-            .map_err(|e| format!("Error opening PhysicalDrive (Check Admin rights): {e}"))?;
+            .map_err(|e| fl!("win-err-open-drive", error = e.to_string()))?;
 
             // Enable Extended DASD I/O to allow access beyond the filesystem boundary
             let mut b_ret = 0;
@@ -136,7 +138,7 @@ impl WindowsPhysicalDrive {
                 Default::default(),
                 None,
             )
-            .map_err(|e| format!("Lock failure: {e}"))?;
+            .map_err(|e| fl!("win-err-lock-failure", error = e.to_string()))?;
 
             let mut b_ret = 0;
             // Force the filesystem to dismount and lock
@@ -180,7 +182,7 @@ impl WindowsPhysicalDrive {
                 Default::default(),
                 None,
             )
-            .map_err(|e| format!("Map error: {e}"))?;
+            .map_err(|e| fl!("win-err-map-error", error = e.to_string()))?;
 
             let mut dev_number = STORAGE_DEVICE_NUMBER::default();
             let mut bytes_ret = 0;
@@ -199,7 +201,7 @@ impl WindowsPhysicalDrive {
             if res.is_ok() {
                 Ok(format!("\\\\.\\PhysicalDrive{}", dev_number.DeviceNumber))
             } else {
-                Err("Failed to get physical disk number".into())
+                Err(fl!("win-err-disk-number"))
             }
         }
     }
@@ -230,7 +232,10 @@ impl PhysicalDrive for WindowsPhysicalDrive {
                 .map_err(|_| io::Error::last_os_error())?;
 
             if bytes_read == 0 && !buffer.is_empty() {
-                return Err(io::Error::new(io::ErrorKind::UnexpectedEof, "Read 0 bytes"));
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    fl!("win-err-read-zero"),
+                ));
             }
         }
         Ok(())

@@ -8,6 +8,7 @@ edition.workspace = true
 dist = false
 
 [dependencies]
+rindrive_i18n = { workspace = true }
 clap = { workspace = true }
 rand = { workspace = true }
 thiserror = { workspace = true }

@@ -1,6 +1,7 @@
 use colored::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use rindrive_core::engine::spotcheck::Report;
+use rindrive_i18n::fl;
 use std::io::{self, Write};
 
 /// Constant for converting raw bytes to Gibibytes (2^30).
@@ -62,12 +63,19 @@ pub fn show_drive_details(mount_point: &str, size_bytes: u64) {
     let size_gib = size_bytes as f64 / BYTES_PER_GIB;
 
     println!();
-    println!("   {}", " DRIVE INFORMATION ".on_blue().white().bold());
+    println!(
+        "   {}",
+        fl!("cli-drive-info-header").on_blue().white().bold()
+    );
     println!("   {}", "─".repeat(45).blue().dimmed());
-    println!("   {:<12} {}", "📂 Path:".bold(), mount_point.cyan().bold());
+    println!(
+        "   {:<12} {}",
+        fl!("cli-label-path").bold(),
+        mount_point.cyan().bold()
+    );
     println!(
         "   {:<12} {} {}",
-        "💾 Size:".bold(),
+        fl!("cli-label-size").bold(),
         format!("{:.2} GiB", size_gib).yellow().bold(),
         format!("({} bytes)", size_bytes).dimmed().italic()
     );
@@ -78,29 +86,29 @@ pub fn show_drive_details(mount_point: &str, size_bytes: u64) {
 /// Renders the final audit report, including the integrity map if errors are found.
 pub fn render_report(report: &Report) {
     println!("{}", "=".repeat(60).dimmed());
-    println!("{:^60}", " AUDIT RESULTS ".on_blue().white().bold());
+    println!(
+        "{:^60}",
+        fl!("cli-audit-results-header").on_blue().white().bold()
+    );
     println!("{}", "=".repeat(60).dimmed());
 
     let declared = report.declared_size_bytes as f64 / BYTES_PER_GIB;
     let validated = report.validated_size_bytes as f64 / BYTES_PER_GIB;
 
-    println!(" {}:  {declared:.2} GiB", "📦 Declared Size".bold());
-    println!(" {}:  {validated:.2} GiB", "🛡️ Validated Size".bold());
+    println!(
+        " {}:  {declared:.2} GiB",
+        fl!("cli-label-declared-size").bold()
+    );
+    println!(
+        " {}:  {validated:.2} GiB",
+        fl!("cli-label-validated-size").bold()
+    );
 
     println!("{}", "-".repeat(60).dimmed());
 
     if report.has_errors {
-        println!(
-            "{}",
-            "❌ CRITICAL: FAKE OR DEFECTIVE DRIVE DETECTED!"
-                .red()
-                .bold()
-                .blink()
-        );
-        println!(
-            "\n{}",
-            "Integrity Map ( . = OK | X = CORRUPTED ):".underline()
-        );
+        println!("{}", fl!("cli-critical-alert").red().bold().blink());
+        println!("\n{}", fl!("cli-integrity-map-label").underline());
 
         for (i, &ok) in report.integrity_map.iter().enumerate() {
             let symbol = if ok { ".".green() } else { "X".red().bold() };
@@ -111,19 +119,14 @@ pub fn render_report(report: &Report) {
         }
         println!();
     } else {
-        println!(
-            "{}",
-            "✅ SUCCESS: DRIVE INTEGRITY VERIFIED (100% OK)"
-                .green()
-                .bold()
-        );
+        println!("{}", fl!("cli-success-alert").green().bold());
     }
     println!("{}", "=".repeat(60).dimmed());
 }
 
 /// Prompts the user for a Yes/No confirmation via stdin.
 pub fn confirm_action(prompt: &str) -> io::Result<bool> {
-    print!("{} {}: ", prompt.bold(), "(y/N)".yellow());
+    print!("{} {}: ", prompt.bold(), fl!("cli-confirm-suffix").yellow());
     io::stdout().flush()?;
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;

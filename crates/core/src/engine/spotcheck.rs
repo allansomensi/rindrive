@@ -1,5 +1,6 @@
 use crate::platforms::PhysicalDrive;
 use rand::{RngExt, seq::SliceRandom};
+use rindrive_i18n::fl;
 use std::io;
 
 #[derive(Debug, Clone)]
@@ -51,7 +52,7 @@ where
     if sections == 0 {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "Sections must be greater than 0",
+            fl!("error-sections-zero"),
         ));
     }
 
@@ -70,7 +71,7 @@ where
         .collect();
 
     // 1. Backup Phase
-    progress_callback("Backing up data...".into(), 0.0);
+    progress_callback(fl!("audit-backing-up"), 0.0);
     let mut backups = Vec::with_capacity(sections);
     for (i, &sector) in test_points.iter().enumerate() {
         let mut buf = AlignedBuffer::new(buffer_size);
@@ -79,14 +80,18 @@ where
 
         if i % 10 == 0 || i == sections - 1 {
             progress_callback(
-                format!("Backup block {}/{sections}", i + 1),
+                fl!(
+                    "audit-backup-block",
+                    current = (i + 1).to_string(),
+                    total = sections.to_string()
+                ),
                 0.1 * (i as f32 / sections as f32),
             );
         }
     }
 
     // 2. Poisoning Phase
-    progress_callback("Poisoning drive regions...".into(), 0.1);
+    progress_callback(fl!("audit-poisoning"), 0.1);
     let mut poisons = Vec::with_capacity(sections);
     let mut write_order: Vec<usize> = (0..sections).collect();
     let mut rng = rand::rng();
@@ -101,7 +106,7 @@ where
 
         let progress = 0.1 + (0.4 * (count as f32 / sections as f32));
         if count % 10 == 0 || count == sections - 1 {
-            progress_callback("Writing random data...".into(), progress);
+            progress_callback(fl!("audit-writing-random"), progress);
         }
     }
 
@@ -109,7 +114,7 @@ where
     drive.sync()?;
 
     // 3. Verification Phase
-    progress_callback("Verifying integrity...".into(), 0.5);
+    progress_callback(fl!("audit-verifying-integrity"), 0.5);
     let mut results = vec![false; sections];
 
     for i in 0..sections {
@@ -126,12 +131,12 @@ where
         }
         let progress = 0.5 + (0.4 * (i as f32 / sections as f32));
         if i % 10 == 0 || i == sections - 1 {
-            progress_callback("Verifying...".into(), progress);
+            progress_callback(fl!("audit-verifying"), progress);
         }
     }
 
     // 4. Restore Phase
-    progress_callback("Restoring original data...".into(), 0.9);
+    progress_callback(fl!("audit-restoring"), 0.9);
     for i in 0..sections {
         let _ = drive.write_at(test_points[i] * 512, backups[i].as_slice());
     }

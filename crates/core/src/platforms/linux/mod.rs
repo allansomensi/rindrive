@@ -38,11 +38,13 @@ impl LinuxPhysicalDrive {
 
         let mut file = options.open(&physical_path).map_err(|e| {
             if e.raw_os_error() == Some(libc::EBUSY) {
-                format!(
-                    "Drive '{physical_path}' is currently mounted or busy. Please unmount it first."
-                )
+                fl!("linux-err-drive-busy", path = physical_path.clone())
             } else {
-                format!("Error opening device '{physical_path}' (Check root privileges): {e}")
+                fl!(
+                    "linux-err-open-device",
+                    path = physical_path.clone(),
+                    error = e.to_string()
+                )
             }
         })?;
 
@@ -56,8 +58,8 @@ impl LinuxPhysicalDrive {
     }
 
     fn get_physical_path(mount_point: &str) -> Result<String, String> {
-        let mounts_file =
-            File::open("/proc/mounts").map_err(|e| format!("Failed to read /proc/mounts: {e}"))?;
+        let mounts_file = File::open("/proc/mounts")
+            .map_err(|e| fl!("linux-err-read-mounts", error = e.to_string()))?;
         let reader = BufReader::new(mounts_file);
 
         let target_mount = mount_point.trim_end_matches('/');
@@ -74,7 +76,7 @@ impl LinuxPhysicalDrive {
             }
         }
 
-        Err(format!("Mount point '{mount_point}' not found"))
+        Err(fl!("linux-err-mount-not-found", path = mount_point))
     }
 }
 

@@ -5,14 +5,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 
-pub fn run(path: PathBuf) -> impl futures::Stream<Item = Message> {
+pub fn run(
+    path: PathBuf,
+    sections_str: String,
+    buffer_str: String,
+) -> impl futures::Stream<Item = Message> {
+    let sections = sections_str.parse::<usize>().unwrap_or(10);
+    let buffer = buffer_str.parse::<usize>().unwrap_or(1024 * 1024);
+
     let (tx, rx) = mpsc::channel(100);
 
     tokio::task::spawn_blocking(move || {
         let path_str = path.to_str().unwrap_or_default();
         match platforms::open_drive(path_str) {
             Ok(mut drive) => {
-                let res = engine::spotcheck::run(&mut *drive, 10, 1024 * 1024, |msg, pct| {
+                let res = engine::spotcheck::run(&mut *drive, sections, buffer, |msg, pct| {
                     let _ = tx.blocking_send(Message::Progress(pct, msg.to_string()));
                 });
 

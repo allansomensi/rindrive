@@ -2,6 +2,7 @@ use crate::{message::Message, state::AppState, view, worker};
 use iced::{Subscription, Task};
 use rfd::FileDialog;
 use rindrive_core::engine::EngineType;
+use rindrive_i18n::fl;
 use std::path::PathBuf;
 
 pub struct App {
@@ -20,7 +21,7 @@ impl Default for App {
         Self {
             state: AppState::Waiting,
             selected_drive: None,
-            log: "Waiting for USB drive...".to_string(),
+            log: fl!("log-waiting"),
             progress: 0.0,
 
             // Defaults
@@ -63,13 +64,13 @@ impl App {
             Message::SelectManual => {
                 Task::perform(async { FileDialog::new().pick_folder() }, |opt| {
                     opt.map(Message::DriveDetected)
-                        .unwrap_or(Message::Progress(0.0, "Selection cancelled".to_string()))
+                        .unwrap_or(Message::Progress(0.0, fl!("log-cancelled")))
                 })
             }
 
             Message::DriveDetected(path) => {
                 self.selected_drive = Some(path.clone());
-                self.log = format!("Detected: {}", path.display());
+                self.log = fl!("log-detected", path = path.display().to_string());
                 self.state = AppState::Ready;
                 self.progress = 0.0;
 
@@ -82,10 +83,17 @@ impl App {
             Message::StartAudit => {
                 if let Some(path) = self.selected_drive.clone() {
                     self.state = AppState::Auditing;
-                    self.log = "Initializing engine...".to_string();
+                    self.log = fl!("log-initializing").to_string();
                     self.progress = 0.0;
 
-                    Task::run(worker::audit::run(path), |evt| evt)
+                    Task::run(
+                        worker::audit::run(
+                            path,
+                            self.sections_input.clone(),
+                            self.buffer_size_input.clone(),
+                        ),
+                        |evt| evt,
+                    )
                 } else {
                     Task::none()
                 }
@@ -116,13 +124,13 @@ impl App {
                         let status = if report.has_errors { 2 } else { 1 };
                         self.block_map.fill(status);
                         self.log = if report.has_errors {
-                            "❌ FAKE / CORRUPTED!".to_string()
+                            fl!("log-fake").to_string()
                         } else {
-                            "✅ GENUINE (100% OK)".to_string()
+                            fl!("log-genuine").to_string()
                         };
                     }
                     Err(e) => {
-                        self.log = format!("Critical Error: {e}");
+                        self.log = fl!("log-error", error = e.to_string());
                         self.block_map.fill(2);
                     }
                 };
