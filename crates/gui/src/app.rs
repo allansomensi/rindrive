@@ -3,7 +3,10 @@ use iced::{Subscription, Task};
 use rfd::FileDialog;
 use rindrive_core::engine::EngineType;
 use rindrive_i18n::fl;
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicBool},
+};
 
 pub struct App {
     pub state: AppState,
@@ -14,6 +17,7 @@ pub struct App {
     pub buffer_size_input: String,
     pub selected_engine: EngineType,
     pub block_map: Vec<u8>,
+    pub cancel_flag: Option<Arc<AtomicBool>>,
 }
 
 impl Default for App {
@@ -29,6 +33,7 @@ impl Default for App {
             buffer_size_input: "4096".to_string(),
             selected_engine: EngineType::SpotCheck,
             block_map: vec![0; 576],
+            cancel_flag: None,
         }
     }
 }
@@ -42,20 +47,26 @@ impl App {
         match message {
             Message::SectionsChanged(val) => {
                 if val.chars().all(|c| c.is_numeric()) {
-                    self.sections_input = val;
-
-                    if let Ok(n) = self.sections_input.parse::<usize>() {
+                    if val.is_empty() {
+                        self.sections_input = val;
+                        self.block_map = vec![];
+                    } else if let Ok(n) = val.parse::<usize>()
+                        && n <= 2000
+                    {
+                        self.sections_input = val;
                         self.block_map = vec![0; n];
                     }
                 }
                 Task::none()
             }
+
             Message::BufferSizeChanged(val) => {
                 if val.chars().all(|c| c.is_numeric()) {
                     self.buffer_size_input = val;
                 }
                 Task::none()
             }
+
             Message::EngineSelected(engine) => {
                 self.selected_engine = engine;
                 Task::none()
@@ -86,17 +97,32 @@ impl App {
                     self.log = fl!("log-initializing").to_string();
                     self.progress = 0.0;
 
+                    let flag = Arc::new(AtomicBool::new(false));
+                    self.cancel_flag = Some(flag.clone());
+
                     Task::run(
                         worker::audit::run(
                             path,
                             self.sections_input.clone(),
                             self.buffer_size_input.clone(),
+                            flag,
                         ),
                         |evt| evt,
                     )
                 } else {
                     Task::none()
                 }
+            }
+
+            Message::CancelAudit => {
+                if let Some(flag) = &self.cancel_flag {
+                    flag.store(true, std::sync::atomic::Ordering::Relaxed);
+                }
+
+                self.state = AppState::Cancelling;
+                self.log = fl!("log-cancelling").to_string();
+
+                Task::none()
             }
 
             Message::Progress(pct, msg) => {
@@ -116,6 +142,17 @@ impl App {
             }
 
             Message::Finished(result) => {
+                if self.state == AppState::Cancelling {
+                    self.state = AppState::Ready;
+                    self.log = fl!("log-cancelled").to_string();
+                    self.progress = 0.0;
+
+                    if let Ok(n) = self.sections_input.parse::<usize>() {
+                        self.block_map = vec![0; n];
+                    }
+                    return Task::none();
+                }
+
                 self.state = AppState::Finished;
                 self.progress = 100.0;
 

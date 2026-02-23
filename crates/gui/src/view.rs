@@ -84,15 +84,44 @@ pub fn view(app: &App) -> Element<'static, Message> {
         .padding(12)
         .width(Length::Fill);
 
-    let mut start_btn = button(
-        text(fl!("btn-start-audit"))
-            .size(14)
-            .font(iced::font::Font::MONOSPACE)
-            .center(),
-    )
-    .style(button::primary)
-    .padding(12)
-    .width(Length::Fill);
+    let mut start_btn = match app.state {
+        AppState::Auditing => button(
+            text(fl!("btn-cancel-audit"))
+                .size(14)
+                .font(iced::font::Font::MONOSPACE)
+                .center(),
+        )
+        .style(button::danger)
+        .padding(12)
+        .width(Length::Fill)
+        .on_press(Message::CancelAudit),
+        AppState::Cancelling => button(
+            text(fl!("btn-cancelling"))
+                .size(14)
+                .font(iced::font::Font::MONOSPACE)
+                .center(),
+        )
+        .style(button::secondary)
+        .padding(12)
+        .width(Length::Fill),
+        _ => {
+            let btn = button(
+                text(fl!("btn-start-audit"))
+                    .size(14)
+                    .font(iced::font::Font::MONOSPACE)
+                    .center(),
+            )
+            .style(button::primary)
+            .padding(12)
+            .width(Length::Fill);
+
+            if matches!(app.state, AppState::Ready | AppState::Finished) {
+                btn.on_press(Message::StartAudit)
+            } else {
+                btn
+            }
+        }
+    };
 
     if matches!(app.state, AppState::Ready | AppState::Finished) {
         start_btn = start_btn.on_press(Message::StartAudit);

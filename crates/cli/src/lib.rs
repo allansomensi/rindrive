@@ -95,6 +95,8 @@ fn perform_audit(mount_point: &str, args: &Args) -> Result<(), CliError> {
                     pb.set_message(msg.to_string());
                     let position = (pct * 10000.0) as u64;
                     pb.set_position(position);
+
+                    true
                 });
 
             pb.finish_and_clear();

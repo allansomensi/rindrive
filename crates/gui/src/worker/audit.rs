@@ -3,12 +3,14 @@ use iced::futures;
 use rindrive_core::{engine, platforms};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::mpsc;
 
 pub fn run(
     path: PathBuf,
     sections_str: String,
     buffer_str: String,
+    cancel_flag: Arc<AtomicBool>,
 ) -> impl futures::Stream<Item = Message> {
     let sections = sections_str.parse::<usize>().unwrap_or(10);
     let buffer = buffer_str.parse::<usize>().unwrap_or(1024 * 1024);
@@ -21,6 +23,8 @@ pub fn run(
             Ok(mut drive) => {
                 let res = engine::spotcheck::run(&mut *drive, sections, buffer, |msg, pct| {
                     let _ = tx.blocking_send(Message::Progress(pct, msg.to_string()));
+
+                    !cancel_flag.load(Ordering::Relaxed)
                 });
 
                 let _ = tx.blocking_send(Message::Finished(

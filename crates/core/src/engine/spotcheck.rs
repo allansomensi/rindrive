@@ -42,10 +42,10 @@ pub fn run<F>(
     drive: &mut dyn PhysicalDrive,
     sections: usize,
     buffer_size: usize,
-    progress_callback: F,
+    mut progress_callback: F,
 ) -> io::Result<Report>
 where
-    F: Fn(String, f32),
+    F: FnMut(String, f32) -> bool,
 {
     let total_bytes = drive.size();
 
@@ -71,7 +71,10 @@ where
         .collect();
 
     // 1. Backup Phase
-    progress_callback(fl!("audit-backing-up"), 0.0);
+    if !progress_callback(fl!("audit-backing-up"), 0.0) {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled"));
+    }
+
     let mut backups = Vec::with_capacity(sections);
     for (i, &sector) in test_points.iter().enumerate() {
         let mut buf = AlignedBuffer::new(buffer_size);
@@ -79,68 +82,90 @@ where
         backups.push(buf);
 
         if i % 10 == 0 || i == sections - 1 {
-            progress_callback(
-                fl!(
-                    "audit-backup-block",
-                    current = (i + 1).to_string(),
-                    total = sections.to_string()
-                ),
-                0.1 * (i as f32 / sections as f32),
+            let msg = fl!(
+                "audit-backup-block",
+                current = (i + 1).to_string(),
+                total = sections.to_string()
             );
+            if !progress_callback(msg, 0.1 * (i as f32 / sections as f32)) {
+                return Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled"));
+            }
         }
     }
 
+    let mut cancelled = false;
+
     // 2. Poisoning Phase
-    progress_callback(fl!("audit-poisoning"), 0.1);
+    if !progress_callback(fl!("audit-poisoning"), 0.1) {
+        cancelled = true;
+    }
+
     let mut poisons = Vec::with_capacity(sections);
     let mut write_order: Vec<usize> = (0..sections).collect();
     let mut rng = rand::rng();
     write_order.shuffle(&mut rng);
 
-    for (count, &idx) in write_order.iter().enumerate() {
-        let mut p_buf = AlignedBuffer::new(buffer_size);
-        rng.fill(p_buf.as_mut_slice());
+    if !cancelled {
+        for (count, &idx) in write_order.iter().enumerate() {
+            let mut p_buf = AlignedBuffer::new(buffer_size);
+            rng.fill(p_buf.as_mut_slice());
 
-        drive.write_at(test_points[idx] * 512, p_buf.as_slice())?;
-        poisons.push((idx, p_buf));
+            drive.write_at(test_points[idx] * 512, p_buf.as_slice())?;
+            poisons.push((idx, p_buf));
 
-        let progress = 0.1 + (0.4 * (count as f32 / sections as f32));
-        if count % 10 == 0 || count == sections - 1 {
-            progress_callback(fl!("audit-writing-random"), progress);
+            let progress = 0.1 + (0.4 * (count as f32 / sections as f32));
+            if count % 10 == 0
+                || count == sections - 1
+                    && !progress_callback(fl!("audit-writing-random"), progress)
+            {
+                cancelled = true;
+                break;
+            }
         }
+        poisons.sort_by_key(|k| k.0);
+        let _ = drive.sync();
     }
 
-    poisons.sort_by_key(|k| k.0);
-    drive.sync()?;
-
     // 3. Verification Phase
-    progress_callback(fl!("audit-verifying-integrity"), 0.5);
     let mut results = vec![false; sections];
 
-    for i in 0..sections {
-        let mut check_buf = AlignedBuffer::new(buffer_size);
+    if !cancelled && !progress_callback(fl!("audit-verifying-integrity"), 0.5) {
+        cancelled = true;
+    }
 
-        match drive.read_at(test_points[i] * 512, check_buf.as_mut_slice()) {
-            Ok(_) => {
-                let expected = poisons[i].1.as_slice();
-                if check_buf.as_slice() == expected {
-                    results[i] = true;
+    if !cancelled {
+        for i in 0..sections {
+            let mut check_buf = AlignedBuffer::new(buffer_size);
+
+            match drive.read_at(test_points[i] * 512, check_buf.as_mut_slice()) {
+                Ok(_) => {
+                    let expected = poisons[i].1.as_slice();
+                    if check_buf.as_slice() == expected {
+                        results[i] = true;
+                    }
                 }
+                Err(_) => results[i] = false,
             }
-            Err(_) => results[i] = false,
-        }
-        let progress = 0.5 + (0.4 * (i as f32 / sections as f32));
-        if i % 10 == 0 || i == sections - 1 {
-            progress_callback(fl!("audit-verifying"), progress);
+            let progress = 0.5 + (0.4 * (i as f32 / sections as f32));
+            if i % 10 == 0
+                || i == sections - 1 && !progress_callback(fl!("audit-verifying"), progress)
+            {
+                cancelled = true;
+                break;
+            }
         }
     }
 
     // 4. Restore Phase
-    progress_callback(fl!("audit-restoring"), 0.9);
+    let _ = progress_callback(fl!("audit-restoring"), 0.9);
     for i in 0..sections {
         let _ = drive.write_at(test_points[i] * 512, backups[i].as_slice());
     }
     drive.sync()?;
+
+    if cancelled {
+        return Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled"));
+    }
 
     // Result Analysis
     let first_fail = results.iter().position(|&r| !r).unwrap_or(sections);

@@ -7,6 +7,7 @@ pub enum Message {
     SelectManual,
     DriveDetected(PathBuf),
     StartAudit,
+    CancelAudit,
     Progress(f32, String),
     Finished(Result<Arc<engine::spotcheck::Report>, String>),
     SectionsChanged(String),
