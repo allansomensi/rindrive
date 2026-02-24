@@ -56,7 +56,7 @@ colored = "3.1.1"
 indicatif = "0.18"
 
 # GUI
-iced = { version = "0.14", features = ["tokio", "debug", "advanced", "canvas"] }
+iced = { version = "0.14", features = ["tokio", "canvas"] }
 rfd = "0.17.2"
 tokio = { version = "1.0", features = ["full"] }
 tokio-stream = "0.1.18"

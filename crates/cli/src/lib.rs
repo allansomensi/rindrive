@@ -90,14 +90,18 @@ fn perform_audit(mount_point: &str, args: &Args) -> Result<(), CliError> {
             let pb = display::create_audit_progress_bar();
             pb.enable_steady_tick(Duration::from_millis(100));
 
-            let report_result =
-                engine::spotcheck::run(&mut *drive, args.sections, args.buffer_size, |msg, pct| {
+            let report_result = engine::spotcheck::run(
+                &mut *drive,
+                args.sections,
+                args.buffer_size,
+                |msg, pct, _block_update| {
                     pb.set_message(msg.to_string());
                     let position = (pct * 10000.0) as u64;
                     pb.set_position(position);
 
                     true
-                });
+                },
+            );
 
             pb.finish_and_clear();
 

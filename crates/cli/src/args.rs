@@ -13,7 +13,7 @@ pub struct Args {
     pub target: Option<String>,
 
     /// [Spot-check] Number of sections to divide the test
-    #[arg(long, default_value_t = 576)]
+    #[arg(long, default_value_t = 600)]
     pub sections: usize,
 
     /// [Spot-check] Write buffer size in bytes

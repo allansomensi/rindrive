@@ -29,10 +29,10 @@ impl Default for App {
             progress: 0.0,
 
             // Defaults
-            sections_input: "576".to_string(),
+            sections_input: "600".to_string(),
             buffer_size_input: "4096".to_string(),
             selected_engine: EngineType::SpotCheck,
-            block_map: vec![0; 576],
+            block_map: vec![0; 600],
             cancel_flag: None,
         }
     }
@@ -61,14 +61,21 @@ impl App {
             }
 
             Message::BufferSizeChanged(val) => {
-                if val.chars().all(|c| c.is_numeric()) {
+                if val.chars().all(|c| c.is_numeric()) && val.is_empty() {
+                    self.buffer_size_input = val;
+                } else if let Ok(n) = val.parse::<usize>()
+                    && n <= 268_435_456
+                {
                     self.buffer_size_input = val;
                 }
+
                 Task::none()
             }
 
             Message::EngineSelected(engine) => {
-                self.selected_engine = engine;
+                if !matches!(self.state, AppState::Auditing | AppState::Cancelling) {
+                    self.selected_engine = engine;
+                }
                 Task::none()
             }
 
@@ -92,23 +99,27 @@ impl App {
             }
 
             Message::StartAudit => {
+                if let Ok(buf_size) = self.buffer_size_input.parse::<usize>() {
+                    if buf_size < 512 {
+                        self.buffer_size_input = "512".to_string();
+                    }
+                } else {
+                    self.buffer_size_input = "1048576".to_string();
+                }
+
                 if let Some(path) = self.selected_drive.clone() {
                     self.state = AppState::Auditing;
                     self.log = fl!("log-initializing").to_string();
                     self.progress = 0.0;
+                    self.block_map.fill(0);
 
                     let flag = Arc::new(AtomicBool::new(false));
                     self.cancel_flag = Some(flag.clone());
 
-                    Task::run(
-                        worker::audit::run(
-                            path,
-                            self.sections_input.clone(),
-                            self.buffer_size_input.clone(),
-                            flag,
-                        ),
-                        |evt| evt,
-                    )
+                    let sections = self.sections_input.parse::<usize>().unwrap_or(600);
+                    let buffer = self.buffer_size_input.parse::<usize>().unwrap_or(4096);
+
+                    Task::run(worker::audit::run(path, sections, buffer, flag), |evt| evt)
                 } else {
                     Task::none()
                 }
@@ -128,16 +139,13 @@ impl App {
             Message::Progress(pct, msg) => {
                 self.progress = pct * 100.0;
                 self.log = msg;
+                Task::none()
+            }
 
-                let total_blocks = self.block_map.len();
-                let current_index = (self.progress / 100.0 * total_blocks as f32) as usize;
-
-                for i in 0..current_index.min(total_blocks) {
-                    if self.block_map[i] == 0 {
-                        self.block_map[i] = 1;
-                    }
+            Message::BlockUpdated(idx, status) => {
+                if idx < self.block_map.len() {
+                    self.block_map[idx] = status;
                 }
-
                 Task::none()
             }
 
@@ -158,8 +166,6 @@ impl App {
 
                 match result {
                     Ok(report) => {
-                        let status = if report.has_errors { 2 } else { 1 };
-                        self.block_map.fill(status);
                         self.log = if report.has_errors {
                             fl!("log-fake").to_string()
                         } else {

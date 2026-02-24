@@ -14,8 +14,13 @@ const COLOR_ACCENT: Color = Color::from_rgb(0.25, 0.65, 1.0);
 const COLOR_VALID: Color = Color::from_rgb(0.0, 0.8, 0.4);
 const COLOR_INVALID: Color = Color::from_rgb(0.9, 0.25, 0.25);
 const COLOR_PENDING: Color = Color::from_rgb(0.15, 0.15, 0.15);
+const COLOR_READING: Color = Color::from_rgb(0.2, 0.6, 1.0);
+const COLOR_WRITING: Color = Color::from_rgb(0.9, 0.6, 0.1);
 
 pub fn view(app: &App) -> Element<'static, Message> {
+    let is_running = matches!(app.state, AppState::Auditing | AppState::Cancelling);
+    let is_spotcheck = app.selected_engine == EngineType::SpotCheck;
+
     let header = column![
         text(fl!("app-title"))
             .size(30)
@@ -29,40 +34,68 @@ pub fn view(app: &App) -> Element<'static, Message> {
     ]
     .spacing(2);
 
-    let settings_content = column![
+    let mut settings_col = column![
         text(fl!("settings-title"))
             .size(11)
             .font(iced::font::Font::MONOSPACE)
             .style(text::secondary),
-        row![
-            input_group(
-                fl!("settings-sections-label"),
-                &app.sections_input,
-                Message::SectionsChanged
-            ),
-            input_group(
-                fl!("settings-buffer-label"),
-                &app.buffer_size_input,
-                Message::BufferSizeChanged
-            ),
-        ]
-        .spacing(10),
-        column![
-            text(fl!("settings-engine-label"))
-                .size(11)
-                .style(text::secondary),
-            pick_list(
-                &[EngineType::SpotCheck, EngineType::FullScan][..],
-                Some(app.selected_engine),
-                Message::EngineSelected
-            )
-            .text_size(13)
-            .padding(6)
-            .width(Length::Fill)
-        ]
-        .spacing(4)
-    ]
-    .spacing(12);
+    ];
+
+    if is_spotcheck {
+        settings_col = settings_col.push(
+            row![
+                input_group(
+                    fl!("settings-sections-label"),
+                    &app.sections_input,
+                    Message::SectionsChanged,
+                    !is_running,
+                ),
+                input_group(
+                    fl!("settings-buffer-label"),
+                    &app.buffer_size_input,
+                    Message::BufferSizeChanged,
+                    !is_running,
+                ),
+            ]
+            .spacing(10),
+        );
+    }
+
+    let engine_selector: Element<_> = if is_running {
+        container(
+            text(match app.selected_engine {
+                EngineType::SpotCheck => "SpotCheck",
+                EngineType::FullScan => "FullScan",
+            })
+            .size(13)
+            .style(text::secondary),
+        )
+        .padding(6)
+        .width(Length::Fill)
+        .into()
+    } else {
+        pick_list(
+            &[EngineType::SpotCheck, EngineType::FullScan][..],
+            Some(app.selected_engine),
+            Message::EngineSelected,
+        )
+        .text_size(13)
+        .padding(6)
+        .width(Length::Fill)
+        .into()
+    };
+
+    let settings_content = settings_col
+        .push(
+            column![
+                text(fl!("settings-engine-label"))
+                    .size(11)
+                    .style(text::secondary),
+                engine_selector
+            ]
+            .spacing(4),
+        )
+        .spacing(12);
 
     let settings_panel = container(settings_content)
         .padding(15)
@@ -78,11 +111,14 @@ pub fn view(app: &App) -> Element<'static, Message> {
             }
         });
 
-    let manual_btn = button(text(fl!("btn-select-drive")).size(14).center())
-        .on_press(Message::SelectManual)
+    let mut manual_btn = button(text(fl!("btn-select-drive")).size(14).center())
         .style(button::secondary)
         .padding(12)
         .width(Length::Fill);
+
+    if !is_running {
+        manual_btn = manual_btn.on_press(Message::SelectManual);
+    }
 
     let mut start_btn = match app.state {
         AppState::Auditing => button(
@@ -167,9 +203,10 @@ pub fn view(app: &App) -> Element<'static, Message> {
     });
 
     let map_legend = row![
+        legend_badge(COLOR_READING, fl!("legend-read")),
+        legend_badge(COLOR_WRITING, fl!("legend-write")),
         legend_badge(COLOR_VALID, fl!("legend-valid")),
         legend_badge(COLOR_INVALID, fl!("legend-bad")),
-        legend_badge(COLOR_PENDING, fl!("legend-wait")),
     ]
     .spacing(15);
 
@@ -199,7 +236,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
     let main_content = column![
         container(map_legend)
             .padding([10, 20])
-            .align_x(Alignment::End)
+            .align_x(Alignment::Center)
             .width(Length::Fill),
         map_area
     ];
@@ -214,22 +251,25 @@ fn input_group<'a>(
     label: String,
     value: &str,
     on_change: fn(String) -> Message,
+    enabled: bool,
 ) -> Element<'a, Message> {
-    column![
-        text(label).size(12).style(text::secondary),
-        text_input("", value)
-            .on_input(on_change)
-            .padding(8)
-            .size(14)
-            .style(|theme, status| {
-                let mut style = text_input::default(theme, status);
-                style.border.radius = 4.0.into();
-                style
-            })
-    ]
-    .spacing(4)
-    .width(Length::Fill)
-    .into()
+    let mut input = text_input("", value)
+        .padding(8)
+        .size(14)
+        .style(|theme, status| {
+            let mut style = text_input::default(theme, status);
+            style.border.radius = 4.0.into();
+            style
+        });
+
+    if enabled {
+        input = input.on_input(on_change);
+    }
+
+    column![text(label).size(12).style(text::secondary), input]
+        .spacing(4)
+        .width(Length::Fill)
+        .into()
 }
 
 fn legend_badge<'a>(color: Color, label: String) -> Element<'a, Message> {
@@ -350,6 +390,8 @@ impl canvas::Program<Message> for BlockMap {
             let color = match status {
                 1 => COLOR_VALID,
                 2 => COLOR_INVALID,
+                3 => COLOR_READING,
+                4 => COLOR_WRITING,
                 _ => COLOR_PENDING,
             };
 

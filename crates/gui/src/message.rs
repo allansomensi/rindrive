@@ -9,6 +9,7 @@ pub enum Message {
     StartAudit,
     CancelAudit,
     Progress(f32, String),
+    BlockUpdated(usize, u8),
     Finished(Result<Arc<engine::spotcheck::Report>, String>),
     SectionsChanged(String),
     BufferSizeChanged(String),
