@@ -12,5 +12,7 @@ rindrive_core = { workspace = true }
 rindrive_i18n = { workspace = true }
 iced = { workspace = true }
 rfd = { workspace = true }
+sysinfo = { workspace = true }
+nusb = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }

@@ -1,6 +1,8 @@
 #[cfg(target_os = "linux")]
 use super::PhysicalDrive;
 #[cfg(target_os = "linux")]
+use rindrive_i18n::fl;
+#[cfg(target_os = "linux")]
 use std::{
     fs::{File, OpenOptions},
     io::{self, BufRead, BufReader, Seek, SeekFrom},

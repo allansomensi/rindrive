@@ -73,6 +73,7 @@ rust-embed = "8.9"
 rand = "0.10"
 thiserror = "2.0"
 sysinfo = "0.38.2"
+nusb = "0.2.2"
 
 # Dev
 cargo-husky = { version = "1.5.0", default-features = false, features = [

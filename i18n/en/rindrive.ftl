@@ -5,6 +5,7 @@ settings-sections-label = Sections
 settings-buffer-label = Buffer (KB)
 settings-engine-label = Scan Engine
 btn-select-drive = 📂 Select Drive
+unknown-drive = Generic Drive
 btn-start-audit = 🚀 START AUDIT
 btn-cancel-audit = ✖ CANCEL
 btn-cancelling = CANCELLING...

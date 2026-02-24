@@ -111,14 +111,64 @@ pub fn view(app: &App) -> Element<'static, Message> {
             }
         });
 
-    let mut manual_btn = button(text(fl!("btn-select-drive")).size(14).center())
-        .style(button::secondary)
-        .padding(12)
+    let drive_section: Element<_> = if let Some(drive_path) = &app.selected_drive {
+        let mount_point = drive_path.display().to_string();
+
+        let info_col = column![
+            text(app.drive_name.clone())
+                .size(13)
+                .style(|_| text::Style {
+                    color: Some(Color::WHITE)
+                }),
+            text(format!("{} • {mount_point}", app.drive_capacity))
+                .size(11)
+                .style(text::secondary)
+        ]
+        .spacing(2)
         .width(Length::Fill);
 
-    if !is_running {
-        manual_btn = manual_btn.on_press(Message::SelectManual);
-    }
+        let mut btn_change = button(text("🔄").size(14).center())
+            .style(button::secondary)
+            .padding(6);
+
+        if !is_running {
+            btn_change = btn_change.on_press(Message::UnselectDrive);
+        }
+
+        container(
+            row![text("💾").size(18), info_col, btn_change]
+                .spacing(10)
+                .align_y(Alignment::Center),
+        )
+        .padding(10)
+        .style(move |theme: &Theme| {
+            let palette = theme.extended_palette();
+            container::Style {
+                background: Some(palette.background.weak.color.into()),
+                border: iced::Border {
+                    radius: 6.0.into(),
+                    color: if is_running {
+                        palette.background.weak.color
+                    } else {
+                        COLOR_ACCENT.scale_alpha(0.5)
+                    },
+                    width: 1.0,
+                },
+                ..Default::default()
+            }
+        })
+        .into()
+    } else {
+        let mut btn = button(text(fl!("btn-select-drive")).size(14).center())
+            .style(button::secondary)
+            .padding(12)
+            .width(Length::Fill);
+
+        if !is_running {
+            btn = btn.on_press(Message::SelectManual);
+        }
+        btn.into()
+    };
 
     let mut start_btn = match app.state {
         AppState::Auditing => button(
@@ -182,7 +232,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         Space::new().height(8),
         progress_section,
         Space::new().height(15),
-        manual_btn,
+        drive_section,
         Space::new().height(8),
         start_btn
     ];
@@ -194,7 +244,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         Space::width(Space::new(), Length::Fill),
         controls_panel
     ])
-    .width(Length::Fixed(280.0))
+    .width(Length::Fixed(320.0))
     .height(Length::Fill)
     .padding(20)
     .style(|_| container::Style {

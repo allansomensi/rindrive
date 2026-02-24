@@ -5,6 +5,7 @@ settings-sections-label = Setores
 settings-buffer-label = Buffer (KB)
 settings-engine-label = Engine
 btn-select-drive = 📂 Selecionar Unidade
+unknown-drive = Pendrive Genérico
 btn-start-audit = 🚀 INICIAR AUDITORIA
 btn-cancel-audit = ✖ CANCELAR
 btn-cancelling = CANCELANDO...

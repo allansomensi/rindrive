@@ -1,5 +1,6 @@
 use crate::{message::Message, state::AppState, view, worker};
 use iced::{Subscription, Task};
+use nusb::MaybeFuture;
 use rfd::FileDialog;
 use rindrive_core::engine::EngineType;
 use rindrive_i18n::fl;
@@ -11,6 +12,8 @@ use std::{
 pub struct App {
     pub state: AppState,
     pub selected_drive: Option<PathBuf>,
+    pub drive_name: String,
+    pub drive_capacity: String,
     pub log: String,
     pub progress: f32,
     pub sections_input: String,
@@ -25,6 +28,8 @@ impl Default for App {
         Self {
             state: AppState::Waiting,
             selected_drive: None,
+            drive_name: String::new(),
+            drive_capacity: String::new(),
             log: fl!("log-waiting"),
             progress: 0.0,
 
@@ -60,6 +65,17 @@ impl App {
                 Task::none()
             }
 
+            Message::UnselectDrive => {
+                if !matches!(self.state, AppState::Auditing | AppState::Cancelling) {
+                    self.selected_drive = None;
+                    self.state = AppState::Waiting;
+                    self.log = fl!("log-waiting").to_string();
+                    self.progress = 0.0;
+                    self.block_map.fill(0);
+                }
+                Task::none()
+            }
+
             Message::BufferSizeChanged(val) => {
                 if val.chars().all(|c| c.is_numeric()) && val.is_empty() {
                     self.buffer_size_input = val;
@@ -68,7 +84,6 @@ impl App {
                 {
                     self.buffer_size_input = val;
                 }
-
                 Task::none()
             }
 
@@ -87,10 +102,100 @@ impl App {
             }
 
             Message::DriveDetected(path) => {
-                self.selected_drive = Some(path.clone());
-                self.log = fl!("log-detected", path = path.display().to_string());
+                let disks = sysinfo::Disks::new_with_refreshed_list();
+                let mut best_disk = None;
+                let mut max_len = 0;
+
+                for disk in disks.iter() {
+                    let disk_name = disk.name().to_string_lossy();
+                    let path_str = path.to_string_lossy();
+
+                    if disk_name.starts_with(path_str.as_ref()) && path_str.starts_with("/dev/") {
+                        best_disk = Some(disk);
+                        break;
+                    }
+
+                    if path.starts_with(disk.mount_point()) {
+                        let len = disk.mount_point().as_os_str().len();
+                        if len > max_len {
+                            max_len = len;
+                            best_disk = Some(disk);
+                        }
+                    }
+                }
+
+                let actual_path = if let Some(disk) = &best_disk {
+                    let p_str = path.to_string_lossy();
+
+                    if p_str.starts_with("/dev/") || p_str.starts_with("\\\\.\\") {
+                        path.clone()
+                    } else {
+                        #[cfg(target_os = "linux")]
+                        {
+                            let dev_name = disk.name().to_string_lossy();
+
+                            PathBuf::from(dev_name.trim_end_matches(char::is_numeric))
+                        }
+                        #[cfg(target_os = "windows")]
+                        {
+                            disk.mount_point().to_path_buf()
+                        }
+                        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+                        {
+                            path.clone()
+                        }
+                    }
+                } else {
+                    path.clone()
+                };
+
+                self.selected_drive = Some(actual_path.clone());
+                self.log = fl!("log-detected", path = actual_path.display().to_string());
                 self.state = AppState::Ready;
                 self.progress = 0.0;
+
+                if let Some(disk) = best_disk {
+                    let gb = disk.total_space() as f64 / 1_000_000_000.0;
+                    self.drive_capacity = format!("{gb:.1} GB");
+                } else {
+                    self.drive_capacity = "-- GB".to_string();
+                }
+
+                let mut hw_name = String::new();
+
+                if let Ok(devices_iter) = nusb::list_devices().wait() {
+                    let devices: Vec<_> = devices_iter.collect();
+
+                    for dev in devices.into_iter().rev() {
+                        let mut is_mass_storage = dev.class() == 8;
+
+                        if !is_mass_storage {
+                            for interface in dev.interfaces() {
+                                if interface.class() == 8 {
+                                    is_mass_storage = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if is_mass_storage {
+                            let mfg = dev.manufacturer_string().unwrap_or("").trim();
+                            let prod = dev.product_string().unwrap_or("").trim();
+
+                            let full_name = format!("{mfg} {prod}").trim().to_string();
+
+                            if !full_name.is_empty() && full_name.len() > 2 {
+                                hw_name = full_name;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                self.drive_name = if hw_name.is_empty() {
+                    fl!("unknown-drive").to_string()
+                } else {
+                    hw_name
+                };
 
                 if let Ok(n) = self.sections_input.parse::<usize>() {
                     self.block_map = vec![0; n];
@@ -132,7 +237,6 @@ impl App {
 
                 self.state = AppState::Cancelling;
                 self.log = fl!("log-cancelling").to_string();
-
                 Task::none()
             }
 

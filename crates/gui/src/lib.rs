@@ -12,7 +12,7 @@ pub fn run() -> iced::Result {
         .theme(|_app: &App| iced::Theme::GruvboxDark)
         .subscription(|app: &App| app.subscription())
         .centered()
-        .window_size((597.0, 500.0))
+        .window_size((670.0, 550.0))
         .resizable(false)
         .antialiasing(true)
         .run()

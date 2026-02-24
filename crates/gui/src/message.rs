@@ -6,6 +6,7 @@ use std::sync::Arc;
 pub enum Message {
     SelectManual,
     DriveDetected(PathBuf),
+    UnselectDrive,
     StartAudit,
     CancelAudit,
     Progress(f32, String),
