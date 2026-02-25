@@ -9,6 +9,13 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+#[derive(Debug, Clone)]
+pub struct UsbHardwareInfo {
+    pub manufacturer: Option<String>,
+    pub product: Option<String>,
+    pub speed: Option<nusb::Speed>,
+}
+
 pub struct App {
     pub state: AppState,
     pub selected_drive: Option<PathBuf>,
@@ -21,6 +28,9 @@ pub struct App {
     pub selected_engine: EngineType,
     pub block_map: Vec<u8>,
     pub cancel_flag: Option<Arc<AtomicBool>>,
+    pub usb_info: Option<UsbHardwareInfo>,
+    pub last_report: Option<Arc<rindrive_core::engine::spotcheck::Report>>,
+    pub audit_time: Option<String>,
 }
 
 impl Default for App {
@@ -39,6 +49,9 @@ impl Default for App {
             selected_engine: EngineType::SpotCheck,
             block_map: vec![0; 600],
             cancel_flag: None,
+            usb_info: None,
+            last_report: None,
+            audit_time: None,
         }
     }
 }
@@ -72,6 +85,10 @@ impl App {
                     self.log = fl!("log-waiting").to_string();
                     self.progress = 0.0;
                     self.block_map.fill(0);
+                    self.usb_info = None;
+                    self.usb_info = None;
+                    self.last_report = None;
+                    self.audit_time = None;
                 }
                 Task::none()
             }
@@ -126,14 +143,12 @@ impl App {
 
                 let actual_path = if let Some(disk) = &best_disk {
                     let p_str = path.to_string_lossy();
-
                     if p_str.starts_with("/dev/") || p_str.starts_with("\\\\.\\") {
                         path.clone()
                     } else {
                         #[cfg(target_os = "linux")]
                         {
                             let dev_name = disk.name().to_string_lossy();
-
                             PathBuf::from(dev_name.trim_end_matches(char::is_numeric))
                         }
                         #[cfg(target_os = "windows")]
@@ -154,7 +169,11 @@ impl App {
                 self.state = AppState::Ready;
                 self.progress = 0.0;
 
-                if let Some(disk) = best_disk {
+                let ap_str = actual_path.to_string_lossy().to_string();
+                if let Ok(drive) = rindrive_core::platforms::open_drive(&ap_str) {
+                    let gb = drive.size() as f64 / 1_000_000_000.0;
+                    self.drive_capacity = format!("{gb:.2} GB");
+                } else if let Some(disk) = best_disk {
                     let gb = disk.total_space() as f64 / 1_000_000_000.0;
                     self.drive_capacity = format!("{gb:.1} GB");
                 } else {
@@ -162,13 +181,12 @@ impl App {
                 }
 
                 let mut hw_name = String::new();
+                let mut hw_info = None;
 
                 if let Ok(devices_iter) = nusb::list_devices().wait() {
                     let devices: Vec<_> = devices_iter.collect();
-
                     for dev in devices.into_iter().rev() {
                         let mut is_mass_storage = dev.class() == 8;
-
                         if !is_mass_storage {
                             for interface in dev.interfaces() {
                                 if interface.class() == 8 {
@@ -178,19 +196,32 @@ impl App {
                             }
                         }
                         if is_mass_storage {
-                            let mfg = dev.manufacturer_string().unwrap_or("").trim();
-                            let prod = dev.product_string().unwrap_or("").trim();
+                            let mfg = dev.manufacturer_string().map(|s| s.trim().to_string());
+                            let prod = dev.product_string().map(|s| s.trim().to_string());
 
-                            let full_name = format!("{mfg} {prod}").trim().to_string();
+                            let full_name = format!(
+                                "{} {}",
+                                mfg.as_deref().unwrap_or(""),
+                                prod.as_deref().unwrap_or("")
+                            )
+                            .trim()
+                            .to_string();
 
                             if !full_name.is_empty() && full_name.len() > 2 {
                                 hw_name = full_name;
+
+                                hw_info = Some(UsbHardwareInfo {
+                                    manufacturer: mfg,
+                                    product: prod,
+                                    speed: dev.speed(),
+                                });
                                 break;
                             }
                         }
                     }
                 }
 
+                self.usb_info = hw_info;
                 self.drive_name = if hw_name.is_empty() {
                     fl!("unknown-drive").to_string()
                 } else {
@@ -265,11 +296,13 @@ impl App {
                     return Task::none();
                 }
 
-                self.state = AppState::Finished;
-                self.progress = 100.0;
-
                 match result {
                     Ok(report) => {
+                        self.state = AppState::Finished;
+                        self.progress = 100.0;
+                        self.audit_time =
+                            Some(chrono::Local::now().format("%m/%d/%Y %H:%M:%S").to_string());
+                        self.last_report = Some(report.clone());
                         self.log = if report.has_errors {
                             fl!("log-fake").to_string()
                         } else {
@@ -277,8 +310,13 @@ impl App {
                         };
                     }
                     Err(e) => {
+                        self.state = AppState::Ready;
                         self.log = fl!("log-error", error = e.to_string());
-                        self.block_map.fill(2);
+                        self.progress = 0.0;
+
+                        if let Ok(n) = self.sections_input.parse::<usize>() {
+                            self.block_map = vec![0; n];
+                        }
                     }
                 };
                 Task::none()

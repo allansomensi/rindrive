@@ -18,6 +18,10 @@ const COLOR_READING: Color = Color::from_rgb(0.2, 0.6, 1.0);
 const COLOR_WRITING: Color = Color::from_rgb(0.9, 0.6, 0.1);
 
 pub fn view(app: &App) -> Element<'static, Message> {
+    if app.state == AppState::Finished {
+        return view_finished_screen(app);
+    }
+
     let is_running = matches!(app.state, AppState::Auditing | AppState::Cancelling);
     let is_spotcheck = app.selected_engine == EngineType::SpotCheck;
 
@@ -283,15 +287,25 @@ pub fn view(app: &App) -> Element<'static, Message> {
         }
     });
 
-    let main_content = column![
+    let map_section = column![
         container(map_legend)
             .padding([10, 20])
             .align_x(Alignment::Center)
             .width(Length::Fill),
         map_area
-    ];
+    ]
+    .width(Length::Fill);
 
-    row![sidebar, main_content]
+    let mut main_content_row = row![map_section].width(Length::Fill).height(Length::Fill);
+
+    if app.state == AppState::Finished
+        && let Some(info) = app.usb_info.clone()
+    {
+        main_content_row = main_content_row
+            .push(container(view_hardware_report(app, &info)).width(Length::Fixed(320.0)));
+    }
+
+    row![sidebar, main_content_row]
         .width(Length::Fill)
         .height(Length::Fill)
         .into()
@@ -450,4 +464,261 @@ impl canvas::Program<Message> for BlockMap {
 
         vec![frame.into_geometry()]
     }
+}
+
+fn view_finished_screen(app: &App) -> Element<'static, Message> {
+    let has_errors = app.block_map.contains(&2);
+
+    let (title_color, title_icon, title_text) = if has_errors {
+        (COLOR_INVALID, "⚠️", fl!("report-status-fake"))
+    } else {
+        (COLOR_VALID, "✅", fl!("report-status-genuine"))
+    };
+
+    let header = container(
+        row![
+            text(title_icon).size(28),
+            text(title_text).size(20).style(move |_| text::Style {
+                color: Some(title_color)
+            }),
+        ]
+        .spacing(15)
+        .align_y(Alignment::Center),
+    )
+    .padding([15, 20])
+    .width(Length::Fill);
+
+    let mut hw_content: Element<_> = Space::new().into();
+    if let Some(info) = app.usb_info.clone() {
+        hw_content = view_hardware_report(app, &info);
+    }
+
+    let map_legend = row![
+        legend_badge(COLOR_VALID, fl!("legend-valid")),
+        legend_badge(COLOR_INVALID, fl!("legend-bad")),
+    ]
+    .spacing(15);
+
+    let map_area = container(
+        canvas(BlockMap {
+            blocks: app.block_map.clone(),
+        })
+        .width(Length::Fill)
+        .height(Length::Fill),
+    )
+    .width(Length::Fill)
+    .height(Length::Fill)
+    .padding(10)
+    .style(|theme: &Theme| {
+        let palette = theme.extended_palette();
+        container::Style {
+            background: Some(COLOR_BG_MAP.into()),
+            border: iced::Border {
+                color: palette.background.strong.color,
+                width: 1.0,
+                radius: 6.0.into(),
+            },
+            ..Default::default()
+        }
+    });
+
+    let map_section = column![
+        container(map_legend)
+            .padding([0, 10])
+            .align_x(Alignment::Center)
+            .width(Length::Fill),
+        map_area
+    ]
+    .width(Length::Fill);
+
+    let content_row = row![
+        container(hw_content).width(Length::Fixed(400.0)),
+        container(map_section).width(Length::Fill)
+    ]
+    .spacing(15)
+    .width(Length::Fill)
+    .height(Length::Fill);
+
+    let btn_back = button(text(fl!("btn-new-audit")).size(15).center())
+        .style(button::primary)
+        .padding([10, 30])
+        .on_press(Message::UnselectDrive);
+
+    let main_col = column![
+        header,
+        content_row,
+        Space::new().height(10),
+        container(btn_back).width(Length::Fill)
+    ]
+    .padding([10, 20]);
+
+    container(main_col)
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(|_| container::Style {
+            background: Some(COLOR_BG_SIDEBAR.into()),
+            ..Default::default()
+        })
+        .into()
+}
+
+fn view_hardware_report(
+    app: &App,
+    info: &crate::app::UsbHardwareInfo,
+) -> Element<'static, Message> {
+    let (speed_name, speed_desc, speed_color) = match info.speed {
+        Some(nusb::Speed::SuperPlus) => (
+            fl!("report-usb-speed-super-plus"),
+            fl!("report-usb-desc-super-plus"),
+            COLOR_VALID,
+        ),
+        Some(nusb::Speed::Super) => (
+            fl!("report-usb-speed-super"),
+            fl!("report-usb-desc-super"),
+            COLOR_VALID,
+        ),
+        Some(nusb::Speed::High) => (
+            fl!("report-usb-speed-high"),
+            fl!("report-usb-desc-high"),
+            COLOR_WRITING,
+        ),
+        _ => (
+            fl!("report-usb-speed-unknown"),
+            fl!("report-usb-desc-unknown"),
+            COLOR_PENDING,
+        ),
+    };
+
+    let engine_details = match app.selected_engine {
+        EngineType::SpotCheck => fl!(
+            "report-engine-spotcheck",
+            sections = app.sections_input.clone(),
+            buffer = app.buffer_size_input.clone()
+        ),
+        EngineType::FullScan => fl!("report-engine-fullscan"),
+    };
+
+    let (real_size_text, real_size_color) = if let Some(report) = &app.last_report {
+        let real_gb = report.validated_size_bytes as f64 / 1_000_000_000.0;
+        let size_val = format!("{real_gb:.2}");
+        if report.has_errors {
+            (fl!("report-capacity-fake", size = size_val), COLOR_INVALID)
+        } else {
+            (fl!("report-capacity-genuine", size = size_val), COLOR_VALID)
+        }
+    } else {
+        (app.drive_capacity.clone(), Color::WHITE)
+    };
+
+    let small_info = |icon: &'static str, label: String, value: String, val_color: Color| {
+        column![
+            row![
+                text(icon).size(12),
+                text(label).size(11).style(text::secondary)
+            ]
+            .spacing(5),
+            text(value).size(13).style(move |_| text::Style {
+                color: Some(val_color)
+            })
+        ]
+        .spacing(1)
+    };
+
+    container(
+        column![
+            text(fl!("report-title"))
+                .size(14)
+                .font(iced::font::Font::MONOSPACE)
+                .style(|_| text::Style {
+                    color: Some(COLOR_ACCENT)
+                }),
+            Space::new().height(10),
+            row![
+                small_info(
+                    "🏷️",
+                    fl!("report-label-manufacturer"),
+                    info.manufacturer.clone().unwrap_or(fl!("report-value-na")),
+                    Color::WHITE
+                )
+                .width(Length::FillPortion(1)),
+                small_info(
+                    "📦",
+                    fl!("report-label-product"),
+                    info.product.clone().unwrap_or(fl!("report-value-generic")),
+                    Color::WHITE
+                )
+                .width(Length::FillPortion(1)),
+            ]
+            .spacing(10),
+            Space::new().height(10),
+            small_info(
+                "💾",
+                fl!("report-label-capacity"),
+                real_size_text.to_string(),
+                real_size_color
+            ),
+            Space::new().height(10),
+            small_info(
+                "⚙️",
+                fl!("report-label-engine"),
+                engine_details.to_string(),
+                COLOR_ACCENT
+            ),
+            Space::new().height(10),
+            small_info(
+                "📅",
+                fl!("report-label-date"),
+                app.audit_time
+                    .clone()
+                    .unwrap_or(fl!("report-value-unknown")),
+                Color::WHITE
+            ),
+            Space::new().height(15),
+            container(
+                column![
+                    text(fl!("report-usb-title"))
+                        .size(10)
+                        .font(iced::font::Font::MONOSPACE)
+                        .style(text::secondary),
+                    text(speed_name.to_string())
+                        .size(14)
+                        .style(move |_| text::Style {
+                            color: Some(speed_color)
+                        }),
+                    text(speed_desc.to_string())
+                        .size(10)
+                        .style(move |_| text::Style {
+                            color: Some(speed_color)
+                        }),
+                ]
+                .spacing(2)
+            )
+            .padding(10)
+            .width(Length::Fill)
+            .style(move |_: &Theme| {
+                container::Style {
+                    background: Some(speed_color.scale_alpha(0.1).into()),
+                    border: iced::Border {
+                        color: speed_color.scale_alpha(0.5),
+                        width: 1.0,
+                        radius: 6.0.into(),
+                    },
+                    ..Default::default()
+                }
+            }),
+        ]
+        .spacing(5),
+    )
+    .padding(15)
+    .height(Length::Fill)
+    .style(|_| container::Style {
+        background: Some(COLOR_BG_MAP.into()),
+        border: iced::Border {
+            color: Color::from_rgb(0.2, 0.2, 0.2),
+            width: 1.0,
+            radius: 8.0.into(),
+        },
+        ..Default::default()
+    })
+    .into()
 }
