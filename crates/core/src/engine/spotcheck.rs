@@ -1,4 +1,4 @@
-use crate::platforms::PhysicalDrive;
+use crate::{engine::AlignedBuffer, platforms::PhysicalDrive};
 use rand::{RngExt, seq::SliceRandom};
 use rindrive_i18n::fl;
 use std::io;
@@ -9,33 +9,6 @@ pub struct Report {
     pub validated_size_bytes: u64,
     pub has_errors: bool,
     pub integrity_map: Vec<bool>,
-}
-
-#[derive(Clone)]
-#[repr(C, align(4096))]
-struct AlignedBlock([u8; 4096]);
-
-struct AlignedBuffer {
-    blocks: Vec<AlignedBlock>,
-    size: usize,
-}
-
-impl AlignedBuffer {
-    fn new(size: usize) -> Self {
-        let num_blocks = (size + 4095).div_ceil(4096);
-        Self {
-            blocks: vec![AlignedBlock([0; 4096]); num_blocks],
-            size,
-        }
-    }
-
-    fn as_mut_slice(&mut self) -> &mut [u8] {
-        unsafe { std::slice::from_raw_parts_mut(self.blocks.as_mut_ptr() as *mut u8, self.size) }
-    }
-
-    fn as_slice(&self) -> &[u8] {
-        unsafe { std::slice::from_raw_parts(self.blocks.as_ptr() as *const u8, self.size) }
-    }
 }
 
 pub fn run<F>(

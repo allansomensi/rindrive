@@ -83,5 +83,5 @@ report-usb-speed-high = High Speed (480 Mbps)
 report-usb-speed-unknown = Unknown
 report-usb-desc-super-plus = USB 3.1/3.2 Gen 2
 report-usb-desc-super = USB 3.0/3.2 Gen 1
-report-usb-desc-high = USB 2.0 (Alert)
+report-usb-desc-high = USB 2.0
 report-usb-desc-unknown = Not reported

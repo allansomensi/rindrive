@@ -72,7 +72,9 @@ impl App {
                         && n <= 2000
                     {
                         self.sections_input = val;
-                        self.block_map = vec![0; n];
+                        if self.selected_engine == EngineType::SpotCheck {
+                            self.block_map = vec![0; n];
+                        }
                     }
                 }
                 Task::none()
@@ -85,7 +87,6 @@ impl App {
                     self.log = fl!("log-waiting").to_string();
                     self.progress = 0.0;
                     self.block_map.fill(0);
-                    self.usb_info = None;
                     self.usb_info = None;
                     self.last_report = None;
                     self.audit_time = None;
@@ -107,6 +108,17 @@ impl App {
             Message::EngineSelected(engine) => {
                 if !matches!(self.state, AppState::Auditing | AppState::Cancelling) {
                     self.selected_engine = engine;
+
+                    match engine {
+                        EngineType::SpotCheck => {
+                            if let Ok(n) = self.sections_input.parse::<usize>() {
+                                self.block_map = vec![0; n];
+                            }
+                        }
+                        EngineType::FullScan => {
+                            self.block_map = vec![0; 100];
+                        }
+                    }
                 }
                 Task::none()
             }
@@ -228,8 +240,15 @@ impl App {
                     hw_name
                 };
 
-                if let Ok(n) = self.sections_input.parse::<usize>() {
-                    self.block_map = vec![0; n];
+                match self.selected_engine {
+                    EngineType::SpotCheck => {
+                        if let Ok(n) = self.sections_input.parse::<usize>() {
+                            self.block_map = vec![0; n];
+                        }
+                    }
+                    EngineType::FullScan => {
+                        self.block_map = vec![0; 100];
+                    }
                 }
                 Task::none()
             }
@@ -252,10 +271,21 @@ impl App {
                     let flag = Arc::new(AtomicBool::new(false));
                     self.cancel_flag = Some(flag.clone());
 
-                    let sections = self.sections_input.parse::<usize>().unwrap_or(600);
                     let buffer = self.buffer_size_input.parse::<usize>().unwrap_or(4096);
 
-                    Task::run(worker::audit::run(path, sections, buffer, flag), |evt| evt)
+                    match self.selected_engine {
+                        EngineType::SpotCheck => {
+                            let sections = self.sections_input.parse::<usize>().unwrap_or(600);
+                            Task::run(
+                                worker::spotcheck::run(path, sections, buffer, flag),
+                                |evt| evt,
+                            )
+                        }
+                        EngineType::FullScan => {
+                            self.block_map = vec![0; 100];
+                            Task::run(worker::fullscan::run(path, buffer, flag), |evt| evt)
+                        }
+                    }
                 } else {
                     Task::none()
                 }
@@ -274,6 +304,13 @@ impl App {
             Message::Progress(pct, msg) => {
                 self.progress = pct * 100.0;
                 self.log = msg;
+
+                if self.selected_engine == EngineType::FullScan {
+                    let block_idx = (pct * 100.0) as usize;
+                    if block_idx < self.block_map.len() {
+                        self.block_map[block_idx] = 1;
+                    }
+                }
                 Task::none()
             }
 
@@ -290,8 +327,15 @@ impl App {
                     self.log = fl!("log-cancelled").to_string();
                     self.progress = 0.0;
 
-                    if let Ok(n) = self.sections_input.parse::<usize>() {
-                        self.block_map = vec![0; n];
+                    match self.selected_engine {
+                        EngineType::SpotCheck => {
+                            if let Ok(n) = self.sections_input.parse::<usize>() {
+                                self.block_map = vec![0; n];
+                            }
+                        }
+                        EngineType::FullScan => {
+                            self.block_map = vec![0; 100];
+                        }
                     }
                     return Task::none();
                 }
@@ -303,6 +347,13 @@ impl App {
                         self.audit_time =
                             Some(chrono::Local::now().format("%m/%d/%Y %H:%M:%S").to_string());
                         self.last_report = Some(report.clone());
+
+                        self.block_map = report
+                            .integrity_map
+                            .iter()
+                            .map(|&err| if err { 1 } else { 2 })
+                            .collect();
+
                         self.log = if report.has_errors {
                             fl!("log-fake").to_string()
                         } else {
@@ -314,8 +365,15 @@ impl App {
                         self.log = fl!("log-error", error = e.to_string());
                         self.progress = 0.0;
 
-                        if let Ok(n) = self.sections_input.parse::<usize>() {
-                            self.block_map = vec![0; n];
+                        match self.selected_engine {
+                            EngineType::SpotCheck => {
+                                if let Ok(n) = self.sections_input.parse::<usize>() {
+                                    self.block_map = vec![0; n];
+                                }
+                            }
+                            EngineType::FullScan => {
+                                self.block_map = vec![0; 100];
+                            }
                         }
                     }
                 };
