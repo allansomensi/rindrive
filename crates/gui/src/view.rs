@@ -8,9 +8,6 @@ use iced::{Alignment, Color, Element, Length, Point, Rectangle, Size, Theme, mou
 use rindrive_core::engine::EngineType;
 use rindrive_i18n::fl;
 
-const COLOR_BG_SIDEBAR: Color = Color::from_rgb(0.11, 0.11, 0.11);
-const COLOR_BG_MAP: Color = Color::from_rgb(0.05, 0.05, 0.05);
-const COLOR_ACCENT: Color = Color::from_rgb(0.25, 0.65, 1.0);
 const COLOR_VALID: Color = Color::from_rgb(0.0, 0.8, 0.4);
 const COLOR_INVALID: Color = Color::from_rgb(0.9, 0.25, 0.25);
 const COLOR_PENDING: Color = Color::from_rgb(0.15, 0.15, 0.15);
@@ -28,10 +25,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
     let header = column![
         text(fl!("app-title"))
             .size(30)
-            .font(iced::font::Font::MONOSPACE)
-            .style(|_| text::Style {
-                color: Some(Color::WHITE)
-            }),
+            .font(iced::font::Font::MONOSPACE),
         text(fl!("app-subtitle")).size(12).style(text::secondary),
         Space::new().height(8),
         view_status_badge(&app.log),
@@ -119,11 +113,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         let mount_point = drive_path.display().to_string();
 
         let info_col = column![
-            text(app.drive_name.clone())
-                .size(13)
-                .style(|_| text::Style {
-                    color: Some(Color::WHITE)
-                }),
+            text(app.drive_name.clone()).size(13),
             text(format!("{} • {mount_point}", app.drive_capacity))
                 .size(11)
                 .style(text::secondary)
@@ -154,7 +144,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
                     color: if is_running {
                         palette.background.weak.color
                     } else {
-                        COLOR_ACCENT.scale_alpha(0.5)
+                        palette.primary.strong.color.scale_alpha(0.5)
                     },
                     width: 1.0,
                 },
@@ -251,8 +241,8 @@ pub fn view(app: &App) -> Element<'static, Message> {
     .width(Length::Fixed(320.0))
     .height(Length::Fill)
     .padding(20)
-    .style(|_| container::Style {
-        background: Some(COLOR_BG_SIDEBAR.into()),
+    .style(|theme: &Theme| container::Style {
+        background: Some(theme.extended_palette().background.base.color.into()),
         ..Default::default()
     });
 
@@ -277,7 +267,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
     .style(|theme: &Theme| {
         let palette = theme.extended_palette();
         container::Style {
-            background: Some(COLOR_BG_MAP.into()),
+            background: Some(palette.background.weak.color.into()),
             border: iced::Border {
                 color: palette.background.strong.color,
                 width: 1.0,
@@ -359,41 +349,62 @@ fn legend_badge<'a>(color: Color, label: String) -> Element<'a, Message> {
 }
 
 fn view_status_badge(log: &str) -> Element<'static, Message> {
-    let (icon, color): (&str, Color) = if log.contains("❌") {
-        ("⚠️", COLOR_INVALID)
-    } else if log.contains("✅") {
-        ("🛡️", COLOR_VALID)
+    let is_error = log.contains("❌");
+    let is_success = log.contains("✅");
+    let icon = if is_error {
+        "⚠️"
+    } else if is_success {
+        "🛡️"
     } else {
-        ("ℹ️", COLOR_ACCENT)
+        "ℹ️"
     };
 
     container(
         row![
             text(icon).size(16),
-            text(log.to_string())
-                .size(12)
-                .style(move |_| text::Style { color: Some(color) })
+            text(log.to_string()).size(12).style(move |theme: &Theme| {
+                let ext = theme.extended_palette();
+                let color = if is_error {
+                    ext.danger.strong.color
+                } else if is_success {
+                    ext.success.strong.color
+                } else {
+                    ext.primary.strong.color
+                };
+                text::Style { color: Some(color) }
+            })
         ]
         .spacing(8)
         .align_y(Alignment::Center),
     )
     .padding([6, 10])
-    .style(move |_| container::Style {
-        background: Some(color.scale_alpha(0.08).into()),
-        border: iced::Border {
-            color: color.scale_alpha(0.2),
-            width: 1.0,
-            radius: 4.0.into(),
-        },
-        ..Default::default()
+    .style(move |theme: &Theme| {
+        let ext = theme.extended_palette();
+        let color = if is_error {
+            ext.danger.strong.color
+        } else if is_success {
+            ext.success.strong.color
+        } else {
+            ext.primary.strong.color
+        };
+        container::Style {
+            background: Some(color.scale_alpha(0.08).into()),
+            border: iced::Border {
+                color: color.scale_alpha(0.2),
+                width: 1.0,
+                radius: 4.0.into(),
+            },
+            ..Default::default()
+        }
     })
     .into()
 }
 
-fn style_progress_bar(_theme: &Theme) -> progress_bar::Style {
+fn style_progress_bar(theme: &Theme) -> progress_bar::Style {
+    let ext = theme.extended_palette();
     progress_bar::Style {
-        background: COLOR_PENDING.into(),
-        bar: COLOR_ACCENT.into(),
+        background: ext.background.strong.color.into(),
+        bar: ext.primary.strong.color.into(),
         border: iced::Border::default(),
     }
 }
@@ -469,17 +480,23 @@ impl canvas::Program<Message> for BlockMap {
 fn view_finished_screen(app: &App) -> Element<'static, Message> {
     let has_errors = app.block_map.contains(&2);
 
-    let (title_color, title_icon, title_text) = if has_errors {
-        (COLOR_INVALID, "⚠️", fl!("report-status-fake"))
+    let (title_icon, title_text) = if has_errors {
+        ("⚠️", fl!("report-status-fake"))
     } else {
-        (COLOR_VALID, "✅", fl!("report-status-genuine"))
+        ("✅", fl!("report-status-genuine"))
     };
 
     let header = container(
         row![
             text(title_icon).size(28),
-            text(title_text).size(20).style(move |_| text::Style {
-                color: Some(title_color)
+            text(title_text).size(20).style(move |theme: &Theme| {
+                let ext = theme.extended_palette();
+                let color = if has_errors {
+                    ext.danger.strong.color
+                } else {
+                    ext.success.strong.color
+                };
+                text::Style { color: Some(color) }
             }),
         ]
         .spacing(15)
@@ -512,7 +529,7 @@ fn view_finished_screen(app: &App) -> Element<'static, Message> {
     .style(|theme: &Theme| {
         let palette = theme.extended_palette();
         container::Style {
-            background: Some(COLOR_BG_MAP.into()),
+            background: Some(palette.background.weak.color.into()),
             border: iced::Border {
                 color: palette.background.strong.color,
                 width: 1.0,
@@ -555,8 +572,8 @@ fn view_finished_screen(app: &App) -> Element<'static, Message> {
     container(main_col)
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(|_| container::Style {
-            background: Some(COLOR_BG_SIDEBAR.into()),
+        .style(|theme: &Theme| container::Style {
+            background: Some(theme.extended_palette().background.base.color.into()),
             ..Default::default()
         })
         .into()
@@ -566,26 +583,22 @@ fn view_hardware_report(
     app: &App,
     info: &crate::app::UsbHardwareInfo,
 ) -> Element<'static, Message> {
-    let (speed_name, speed_desc, speed_color) = match info.speed {
+    let speed_status = match info.speed {
+        Some(nusb::Speed::SuperPlus) | Some(nusb::Speed::Super) => 1,
+        Some(nusb::Speed::High) => 2,
+        _ => 3,
+    };
+
+    let (speed_name, speed_desc) = match info.speed {
         Some(nusb::Speed::SuperPlus) => (
             fl!("report-usb-speed-super-plus"),
             fl!("report-usb-desc-super-plus"),
-            COLOR_VALID,
         ),
-        Some(nusb::Speed::Super) => (
-            fl!("report-usb-speed-super"),
-            fl!("report-usb-desc-super"),
-            COLOR_VALID,
-        ),
-        Some(nusb::Speed::High) => (
-            fl!("report-usb-speed-high"),
-            fl!("report-usb-desc-high"),
-            COLOR_WRITING,
-        ),
+        Some(nusb::Speed::Super) => (fl!("report-usb-speed-super"), fl!("report-usb-desc-super")),
+        Some(nusb::Speed::High) => (fl!("report-usb-speed-high"), fl!("report-usb-desc-high")),
         _ => (
             fl!("report-usb-speed-unknown"),
             fl!("report-usb-desc-unknown"),
-            COLOR_PENDING,
         ),
     };
 
@@ -598,27 +611,44 @@ fn view_hardware_report(
         EngineType::FullScan => fl!("report-engine-fullscan"),
     };
 
-    let (real_size_text, real_size_color) = if let Some(report) = &app.last_report {
-        let real_gb = report.validated_size_bytes as f64 / 1_000_000_000.0;
-        let size_val = format!("{real_gb:.2}");
-        if report.has_errors {
-            (fl!("report-capacity-fake", size = size_val), COLOR_INVALID)
+    let real_gb = app
+        .last_report
+        .as_ref()
+        .map_or(0.0, |r| r.validated_size_bytes as f64 / 1_000_000_000.0);
+    let size_val = format!("{real_gb:.2}");
+
+    let has_fake_capacity = app.last_report.as_ref().is_some_and(|r| r.has_errors);
+
+    let real_size_text = if app.last_report.is_some() {
+        if has_fake_capacity {
+            fl!("report-capacity-fake", size = size_val)
         } else {
-            (fl!("report-capacity-genuine", size = size_val), COLOR_VALID)
+            fl!("report-capacity-genuine", size = size_val)
         }
     } else {
-        (app.drive_capacity.clone(), Color::WHITE)
+        app.drive_capacity.clone()
     };
 
-    let small_info = |icon: &'static str, label: String, value: String, val_color: Color| {
+    let small_info = |icon: &'static str,
+                      label: String,
+                      value: String,
+                      is_accent: bool,
+                      custom_color_state: Option<u8>| {
         column![
             row![
                 text(icon).size(12),
                 text(label).size(11).style(text::secondary)
             ]
             .spacing(5),
-            text(value).size(13).style(move |_| text::Style {
-                color: Some(val_color)
+            text(value).size(13).style(move |theme: &Theme| {
+                let ext = theme.extended_palette();
+                let color = match custom_color_state {
+                    Some(1) => ext.danger.strong.color,
+                    Some(2) => ext.success.strong.color,
+                    _ if is_accent => ext.primary.strong.color,
+                    _ => theme.palette().text,
+                };
+                text::Style { color: Some(color) }
             })
         ]
         .spacing(1)
@@ -629,8 +659,8 @@ fn view_hardware_report(
             text(fl!("report-title"))
                 .size(14)
                 .font(iced::font::Font::MONOSPACE)
-                .style(|_| text::Style {
-                    color: Some(COLOR_ACCENT)
+                .style(|theme: &Theme| text::Style {
+                    color: Some(theme.extended_palette().primary.strong.color)
                 }),
             Space::new().height(10),
             row![
@@ -638,14 +668,16 @@ fn view_hardware_report(
                     "🏷️",
                     fl!("report-label-manufacturer"),
                     info.manufacturer.clone().unwrap_or(fl!("report-value-na")),
-                    Color::WHITE
+                    false,
+                    None
                 )
                 .width(Length::FillPortion(1)),
                 small_info(
                     "📦",
                     fl!("report-label-product"),
                     info.product.clone().unwrap_or(fl!("report-value-generic")),
-                    Color::WHITE
+                    false,
+                    None
                 )
                 .width(Length::FillPortion(1)),
             ]
@@ -654,16 +686,16 @@ fn view_hardware_report(
             small_info(
                 "💾",
                 fl!("report-label-capacity"),
-                real_size_text.to_string(),
-                real_size_color
+                real_size_text,
+                false,
+                if app.last_report.is_some() {
+                    Some(if has_fake_capacity { 1 } else { 2 })
+                } else {
+                    None
+                }
             ),
             Space::new().height(10),
-            small_info(
-                "⚙️",
-                fl!("report-label-engine"),
-                engine_details.to_string(),
-                COLOR_ACCENT
-            ),
+            small_info("⚙️", fl!("report-label-engine"), engine_details, true, None),
             Space::new().height(10),
             small_info(
                 "📅",
@@ -671,7 +703,8 @@ fn view_hardware_report(
                 app.audit_time
                     .clone()
                     .unwrap_or(fl!("report-value-unknown")),
-                Color::WHITE
+                false,
+                None
             ),
             Space::new().height(15),
             container(
@@ -680,22 +713,36 @@ fn view_hardware_report(
                         .size(10)
                         .font(iced::font::Font::MONOSPACE)
                         .style(text::secondary),
-                    text(speed_name.to_string())
-                        .size(14)
-                        .style(move |_| text::Style {
-                            color: Some(speed_color)
-                        }),
-                    text(speed_desc.to_string())
-                        .size(10)
-                        .style(move |_| text::Style {
-                            color: Some(speed_color)
-                        }),
+                    text(speed_name).size(14).style(move |theme: &Theme| {
+                        let ext = theme.extended_palette();
+                        let color = match speed_status {
+                            1 => ext.success.strong.color,
+                            2 => ext.secondary.strong.color,
+                            _ => ext.background.strong.color,
+                        };
+                        text::Style { color: Some(color) }
+                    }),
+                    text(speed_desc).size(10).style(move |theme: &Theme| {
+                        let ext = theme.extended_palette();
+                        let color = match speed_status {
+                            1 => ext.success.strong.color,
+                            2 => ext.secondary.strong.color,
+                            _ => ext.background.strong.color,
+                        };
+                        text::Style { color: Some(color) }
+                    }),
                 ]
                 .spacing(2)
             )
             .padding(10)
             .width(Length::Fill)
-            .style(move |_: &Theme| {
+            .style(move |theme: &Theme| {
+                let ext = theme.extended_palette();
+                let speed_color = match speed_status {
+                    1 => ext.success.strong.color,
+                    2 => ext.secondary.strong.color,
+                    _ => ext.background.strong.color,
+                };
                 container::Style {
                     background: Some(speed_color.scale_alpha(0.1).into()),
                     border: iced::Border {
@@ -711,10 +758,10 @@ fn view_hardware_report(
     )
     .padding(15)
     .height(Length::Fill)
-    .style(|_| container::Style {
-        background: Some(COLOR_BG_MAP.into()),
+    .style(|theme: &Theme| container::Style {
+        background: Some(theme.extended_palette().background.weak.color.into()),
         border: iced::Border {
-            color: Color::from_rgb(0.2, 0.2, 0.2),
+            color: theme.extended_palette().background.strong.color,
             width: 1.0,
             radius: 8.0.into(),
         },
