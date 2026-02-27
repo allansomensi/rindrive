@@ -14,6 +14,6 @@ pub fn run() -> iced::Result {
         .centered()
         .window_size((670.0, 550.0))
         .resizable(false)
-        .antialiasing(true)
+        .antialiasing(false)
         .run()
 }
