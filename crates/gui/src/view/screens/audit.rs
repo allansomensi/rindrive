@@ -5,7 +5,7 @@ use iced::widget::{column, container, row};
 use iced::{Alignment, Element, Length};
 use rindrive_i18n::fl;
 
-pub fn view(app: &App) -> Element<'static, Message> {
+pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
     let map_legend = row![
         badge::legend(badge::COLOR_READING, fl!("legend-read")),
         badge::legend(badge::COLOR_WRITING, fl!("legend-write")),
@@ -19,7 +19,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
             .padding([10, 20])
             .align_x(Alignment::Center)
             .width(Length::Fill),
-        canvas::view(app.block_map.clone(), 0.0)
+        canvas::view(&app.block_map, &app.map_cache, 0.0)
     ]
     .width(Length::Fill);
 

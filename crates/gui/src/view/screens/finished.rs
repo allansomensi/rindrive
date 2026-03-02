@@ -5,7 +5,7 @@ use iced::widget::{Space, button, column, container, row, text};
 use iced::{Alignment, Element, Length, Theme};
 use rindrive_i18n::fl;
 
-pub fn view(app: &App) -> Element<'static, Message> {
+pub fn view<'a>(app: &'a App) -> Element<'a, Message> {
     let has_errors = app.block_map.contains(&2);
 
     let (title_icon, title_text) = if has_errors {
@@ -34,8 +34,9 @@ pub fn view(app: &App) -> Element<'static, Message> {
     .width(Length::Fill);
 
     let mut hw_content: Element<_> = Space::new().into();
-    if let Some(info) = app.usb_info.clone() {
-        hw_content = report::view(app, &info);
+
+    if let Some(info) = &app.usb_info {
+        hw_content = report::view(app, info);
     }
 
     let map_legend = row![
@@ -49,7 +50,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
             .padding([0, 10])
             .align_x(Alignment::Center)
             .width(Length::Fill),
-        canvas::view(app.block_map.clone(), 6.0)
+        canvas::view(&app.block_map, &app.map_cache, 6.0)
     ]
     .width(Length::Fill);
 

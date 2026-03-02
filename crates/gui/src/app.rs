@@ -1,5 +1,5 @@
 use crate::{message::Message, state::AppState, view, worker};
-use iced::{Subscription, Task};
+use iced::{Subscription, Task, widget::canvas::Cache};
 use nusb::MaybeFuture;
 use rfd::FileDialog;
 use rindrive_core::engine::EngineType;
@@ -42,6 +42,7 @@ pub struct App {
     pub buffer_size_input: String,
     pub selected_engine: EngineType,
     pub block_map: Vec<u8>,
+    pub map_cache: Cache,
     pub cancel_flag: Option<Arc<AtomicBool>>,
     pub usb_info: Option<UsbHardwareInfo>,
     pub last_report: Option<Arc<rindrive_core::engine::spotcheck::Report>>,
@@ -62,6 +63,7 @@ impl Default for App {
             buffer_size_input: DEFAULT_BUFFER_SIZE.to_string(),
             selected_engine: EngineType::SpotCheck,
             block_map: vec![0; DEFAULT_SECTIONS],
+            map_cache: Cache::default(),
             cancel_flag: None,
             usb_info: None,
             last_report: None,
@@ -82,6 +84,7 @@ impl App {
                     if val.is_empty() {
                         self.sections_input = val;
                         self.block_map.clear();
+                        self.map_cache.clear();
                     } else if let Ok(n) = val.parse::<usize>()
                         && n <= MAX_SECTIONS
                     {
@@ -159,6 +162,7 @@ impl App {
                     self.log = fl!("log-initializing").to_string();
                     self.progress = 0.0;
                     self.block_map.fill(0);
+                    self.map_cache.clear();
 
                     let flag = Arc::new(AtomicBool::new(false));
                     self.cancel_flag = Some(flag.clone());
@@ -206,14 +210,18 @@ impl App {
                     let block_idx = (pct * 100.0) as usize;
                     if block_idx < self.block_map.len() {
                         self.block_map[block_idx] = 1;
+                        self.map_cache.clear();
                     }
                 }
                 Task::none()
             }
 
             Message::BlockUpdated(idx, status) => {
-                if let Some(block) = self.block_map.get_mut(idx) {
+                if let Some(block) = self.block_map.get_mut(idx)
+                    && *block != status
+                {
                     *block = status;
+                    self.map_cache.clear();
                 }
                 Task::none()
             }
@@ -243,6 +251,7 @@ impl App {
                             .map(|&err| if err { 1 } else { 2 })
                             .collect();
 
+                        self.map_cache.clear();
                         self.last_report = Some(report);
                     }
                     Err(e) => {
@@ -284,6 +293,7 @@ impl App {
                 self.block_map = vec![0; FULLSCAN_BLOCKS];
             }
         }
+        self.map_cache.clear();
     }
 
     fn reset_audit_state(&mut self, log_message: String) {
