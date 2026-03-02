@@ -4,6 +4,7 @@
         "engine": "controller",
         "platforms": "client",
         "rindrive": "app",
+        "sections": "content",
         "wix": "windows",
         "worker": "controller"
     },
