@@ -9,11 +9,26 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
+const DEFAULT_SECTIONS: usize = 600;
+const MAX_SECTIONS: usize = 2000;
+const FULLSCAN_BLOCKS: usize = 100;
+const DEFAULT_BUFFER_SIZE: usize = 4096;
+const MIN_BUFFER_SIZE: usize = 512;
+const MAX_BUFFER_SIZE: usize = 268_435_456;
+
 #[derive(Debug, Clone)]
 pub struct UsbHardwareInfo {
     pub manufacturer: Option<String>,
     pub product: Option<String>,
     pub speed: Option<nusb::Speed>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DriveInfoResult {
+    pub actual_path: PathBuf,
+    pub drive_name: String,
+    pub drive_capacity: String,
+    pub usb_info: Option<UsbHardwareInfo>,
 }
 
 pub struct App {
@@ -43,11 +58,10 @@ impl Default for App {
             log: fl!("log-waiting"),
             progress: 0.0,
 
-            // Defaults
-            sections_input: "600".to_string(),
-            buffer_size_input: "4096".to_string(),
+            sections_input: DEFAULT_SECTIONS.to_string(),
+            buffer_size_input: DEFAULT_BUFFER_SIZE.to_string(),
             selected_engine: EngineType::SpotCheck,
-            block_map: vec![0; 600],
+            block_map: vec![0; DEFAULT_SECTIONS],
             cancel_flag: None,
             usb_info: None,
             last_report: None,
@@ -67,58 +81,34 @@ impl App {
                 if val.chars().all(|c| c.is_numeric()) {
                     if val.is_empty() {
                         self.sections_input = val;
-                        self.block_map = vec![];
+                        self.block_map.clear();
                     } else if let Ok(n) = val.parse::<usize>()
-                        && n <= 2000
+                        && n <= MAX_SECTIONS
                     {
                         self.sections_input = val;
-                        if self.selected_engine == EngineType::SpotCheck {
-                            self.block_map = vec![0; n];
-                        }
+                        self.rebuild_block_map();
                     }
-                }
-                Task::none()
-            }
-
-            Message::UnselectDrive => {
-                if !matches!(self.state, AppState::Auditing | AppState::Cancelling) {
-                    self.selected_drive = None;
-                    self.state = AppState::Waiting;
-                    self.log = fl!("log-waiting").to_string();
-                    self.progress = 0.0;
-                    self.block_map.fill(0);
-                    self.usb_info = None;
-                    self.last_report = None;
-                    self.audit_time = None;
                 }
                 Task::none()
             }
 
             Message::BufferSizeChanged(val) => {
-                if val.chars().all(|c| c.is_numeric()) && val.is_empty() {
-                    self.buffer_size_input = val;
-                } else if let Ok(n) = val.parse::<usize>()
-                    && n <= 268_435_456
-                {
-                    self.buffer_size_input = val;
+                if val.chars().all(|c| c.is_numeric()) {
+                    if val.is_empty() {
+                        self.buffer_size_input = val;
+                    } else if let Ok(n) = val.parse::<usize>()
+                        && n <= MAX_BUFFER_SIZE
+                    {
+                        self.buffer_size_input = val;
+                    }
                 }
                 Task::none()
             }
 
             Message::EngineSelected(engine) => {
-                if !matches!(self.state, AppState::Auditing | AppState::Cancelling) {
+                if self.is_idle() {
                     self.selected_engine = engine;
-
-                    match engine {
-                        EngineType::SpotCheck => {
-                            if let Ok(n) = self.sections_input.parse::<usize>() {
-                                self.block_map = vec![0; n];
-                            }
-                        }
-                        EngineType::FullScan => {
-                            self.block_map = vec![0; 100];
-                        }
-                    }
+                    self.rebuild_block_map();
                 }
                 Task::none()
             }
@@ -126,141 +116,43 @@ impl App {
             Message::SelectManual => {
                 Task::perform(async { FileDialog::new().pick_folder() }, |opt| {
                     opt.map(Message::DriveDetected)
-                        .unwrap_or(Message::Progress(0.0, fl!("log-cancelled")))
+                        .unwrap_or_else(|| Message::Progress(0.0, fl!("log-cancelled")))
                 })
             }
 
             Message::DriveDetected(path) => {
-                let disks = sysinfo::Disks::new_with_refreshed_list();
-                let mut best_disk = None;
-                let mut max_len = 0;
+                self.log = fl!("log-detecting");
+                Task::perform(fetch_drive_info(path), Message::DriveInfoLoaded)
+            }
 
-                for disk in disks.iter() {
-                    let disk_name = disk.name().to_string_lossy();
-                    let path_str = path.to_string_lossy();
+            Message::DriveInfoLoaded(info) => {
+                self.selected_drive = Some(info.actual_path.clone());
+                self.log = fl!(
+                    "log-detected",
+                    path = info.actual_path.display().to_string()
+                );
+                self.drive_capacity = info.drive_capacity;
+                self.drive_name = info.drive_name;
+                self.usb_info = info.usb_info;
 
-                    if disk_name.starts_with(path_str.as_ref()) && path_str.starts_with("/dev/") {
-                        best_disk = Some(disk);
-                        break;
-                    }
-
-                    if path.starts_with(disk.mount_point()) {
-                        let len = disk.mount_point().as_os_str().len();
-                        if len > max_len {
-                            max_len = len;
-                            best_disk = Some(disk);
-                        }
-                    }
-                }
-
-                let actual_path = if let Some(disk) = &best_disk {
-                    let p_str = path.to_string_lossy();
-                    if p_str.starts_with("/dev/") || p_str.starts_with("\\\\.\\") {
-                        path.clone()
-                    } else {
-                        #[cfg(target_os = "linux")]
-                        {
-                            let dev_name = disk.name().to_string_lossy();
-                            PathBuf::from(dev_name.trim_end_matches(char::is_numeric))
-                        }
-                        #[cfg(target_os = "windows")]
-                        {
-                            disk.mount_point().to_path_buf()
-                        }
-                        #[cfg(not(any(target_os = "linux", target_os = "windows")))]
-                        {
-                            path.clone()
-                        }
-                    }
-                } else {
-                    path.clone()
-                };
-
-                self.selected_drive = Some(actual_path.clone());
-                self.log = fl!("log-detected", path = actual_path.display().to_string());
                 self.state = AppState::Ready;
                 self.progress = 0.0;
+                self.rebuild_block_map();
 
-                let ap_str = actual_path.to_string_lossy().to_string();
-                if let Ok(drive) = rindrive_core::platforms::open_drive(&ap_str) {
-                    let gb = drive.size() as f64 / 1_000_000_000.0;
-                    self.drive_capacity = format!("{gb:.2} GB");
-                } else if let Some(disk) = best_disk {
-                    let gb = disk.total_space() as f64 / 1_000_000_000.0;
-                    self.drive_capacity = format!("{gb:.1} GB");
-                } else {
-                    self.drive_capacity = "-- GB".to_string();
-                }
+                Task::none()
+            }
 
-                let mut hw_name = String::new();
-                let mut hw_info = None;
-
-                if let Ok(devices_iter) = nusb::list_devices().wait() {
-                    let devices: Vec<_> = devices_iter.collect();
-                    for dev in devices.into_iter().rev() {
-                        let mut is_mass_storage = dev.class() == 8;
-                        if !is_mass_storage {
-                            for interface in dev.interfaces() {
-                                if interface.class() == 8 {
-                                    is_mass_storage = true;
-                                    break;
-                                }
-                            }
-                        }
-                        if is_mass_storage {
-                            let mfg = dev.manufacturer_string().map(|s| s.trim().to_string());
-                            let prod = dev.product_string().map(|s| s.trim().to_string());
-
-                            let full_name = format!(
-                                "{} {}",
-                                mfg.as_deref().unwrap_or(""),
-                                prod.as_deref().unwrap_or("")
-                            )
-                            .trim()
-                            .to_string();
-
-                            if !full_name.is_empty() && full_name.len() > 2 {
-                                hw_name = full_name;
-
-                                hw_info = Some(UsbHardwareInfo {
-                                    manufacturer: mfg,
-                                    product: prod,
-                                    speed: dev.speed(),
-                                });
-                                break;
-                            }
-                        }
-                    }
-                }
-
-                self.usb_info = hw_info;
-                self.drive_name = if hw_name.is_empty() {
-                    fl!("unknown-drive").to_string()
-                } else {
-                    hw_name
-                };
-
-                match self.selected_engine {
-                    EngineType::SpotCheck => {
-                        if let Ok(n) = self.sections_input.parse::<usize>() {
-                            self.block_map = vec![0; n];
-                        }
-                    }
-                    EngineType::FullScan => {
-                        self.block_map = vec![0; 100];
-                    }
+            Message::UnselectDrive => {
+                if self.is_idle() {
+                    self.selected_drive = None;
+                    self.usb_info = None;
+                    self.reset_audit_state(fl!("log-waiting").to_string());
                 }
                 Task::none()
             }
 
             Message::StartAudit => {
-                if let Ok(buf_size) = self.buffer_size_input.parse::<usize>() {
-                    if buf_size < 512 {
-                        self.buffer_size_input = "512".to_string();
-                    }
-                } else {
-                    self.buffer_size_input = "1048576".to_string();
-                }
+                self.validate_buffer_size();
 
                 if let Some(path) = self.selected_drive.clone() {
                     self.state = AppState::Auditing;
@@ -271,18 +163,24 @@ impl App {
                     let flag = Arc::new(AtomicBool::new(false));
                     self.cancel_flag = Some(flag.clone());
 
-                    let buffer = self.buffer_size_input.parse::<usize>().unwrap_or(4096);
+                    let buffer = self
+                        .buffer_size_input
+                        .parse::<usize>()
+                        .unwrap_or(DEFAULT_BUFFER_SIZE);
 
                     match self.selected_engine {
                         EngineType::SpotCheck => {
-                            let sections = self.sections_input.parse::<usize>().unwrap_or(600);
+                            let sections = self
+                                .sections_input
+                                .parse::<usize>()
+                                .unwrap_or(DEFAULT_SECTIONS);
                             Task::run(
                                 worker::spotcheck::run(path, sections, buffer, flag),
                                 |evt| evt,
                             )
                         }
                         EngineType::FullScan => {
-                            self.block_map = vec![0; 100];
+                            self.block_map = vec![0; FULLSCAN_BLOCKS];
                             Task::run(worker::fullscan::run(path, buffer, flag), |evt| evt)
                         }
                     }
@@ -295,7 +193,6 @@ impl App {
                 if let Some(flag) = &self.cancel_flag {
                     flag.store(true, std::sync::atomic::Ordering::Relaxed);
                 }
-
                 self.state = AppState::Cancelling;
                 self.log = fl!("log-cancelling").to_string();
                 Task::none()
@@ -315,28 +212,15 @@ impl App {
             }
 
             Message::BlockUpdated(idx, status) => {
-                if idx < self.block_map.len() {
-                    self.block_map[idx] = status;
+                if let Some(block) = self.block_map.get_mut(idx) {
+                    *block = status;
                 }
                 Task::none()
             }
 
             Message::Finished(result) => {
                 if self.state == AppState::Cancelling {
-                    self.state = AppState::Ready;
-                    self.log = fl!("log-cancelled").to_string();
-                    self.progress = 0.0;
-
-                    match self.selected_engine {
-                        EngineType::SpotCheck => {
-                            if let Ok(n) = self.sections_input.parse::<usize>() {
-                                self.block_map = vec![0; n];
-                            }
-                        }
-                        EngineType::FullScan => {
-                            self.block_map = vec![0; 100];
-                        }
-                    }
+                    self.reset_audit_state(fl!("log-cancelled").to_string());
                     return Task::none();
                 }
 
@@ -346,7 +230,12 @@ impl App {
                         self.progress = 100.0;
                         self.audit_time =
                             Some(chrono::Local::now().format("%m/%d/%Y %H:%M:%S").to_string());
-                        self.last_report = Some(report.clone());
+
+                        self.log = if report.has_errors {
+                            fl!("log-fake").to_string()
+                        } else {
+                            fl!("log-genuine").to_string()
+                        };
 
                         self.block_map = report
                             .integrity_map
@@ -354,27 +243,11 @@ impl App {
                             .map(|&err| if err { 1 } else { 2 })
                             .collect();
 
-                        self.log = if report.has_errors {
-                            fl!("log-fake").to_string()
-                        } else {
-                            fl!("log-genuine").to_string()
-                        };
+                        self.last_report = Some(report);
                     }
                     Err(e) => {
-                        self.state = AppState::Ready;
-                        self.log = fl!("log-error", error = e.to_string());
-                        self.progress = 0.0;
-
-                        match self.selected_engine {
-                            EngineType::SpotCheck => {
-                                if let Ok(n) = self.sections_input.parse::<usize>() {
-                                    self.block_map = vec![0; n];
-                                }
-                            }
-                            EngineType::FullScan => {
-                                self.block_map = vec![0; 100];
-                            }
-                        }
+                        let err_msg = fl!("log-error", error = e.to_string());
+                        self.reset_audit_state(err_msg);
                     }
                 };
                 Task::none()
@@ -392,5 +265,151 @@ impl App {
 
     pub fn view(&self) -> iced::Element<'_, Message> {
         view::view(self)
+    }
+
+    fn is_idle(&self) -> bool {
+        !matches!(self.state, AppState::Auditing | AppState::Cancelling)
+    }
+
+    fn rebuild_block_map(&mut self) {
+        match self.selected_engine {
+            EngineType::SpotCheck => {
+                let n = self
+                    .sections_input
+                    .parse::<usize>()
+                    .unwrap_or(DEFAULT_SECTIONS);
+                self.block_map = vec![0; n];
+            }
+            EngineType::FullScan => {
+                self.block_map = vec![0; FULLSCAN_BLOCKS];
+            }
+        }
+    }
+
+    fn reset_audit_state(&mut self, log_message: String) {
+        self.state = AppState::Waiting;
+        self.progress = 0.0;
+        self.log = log_message;
+        self.last_report = None;
+        self.audit_time = None;
+        self.cancel_flag = None;
+        self.rebuild_block_map();
+    }
+
+    fn validate_buffer_size(&mut self) {
+        if let Ok(buf_size) = self.buffer_size_input.parse::<usize>() {
+            if buf_size < MIN_BUFFER_SIZE {
+                self.buffer_size_input = MIN_BUFFER_SIZE.to_string();
+            }
+        } else {
+            self.buffer_size_input = "1048576".to_string(); // 1MB fallback
+        }
+    }
+}
+
+async fn fetch_drive_info(path: PathBuf) -> DriveInfoResult {
+    // 1. Sysinfo resolution
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let mut best_disk = None;
+    let mut max_len = 0;
+
+    for disk in disks.iter() {
+        let disk_name = disk.name().to_string_lossy();
+        let path_str = path.to_string_lossy();
+
+        if disk_name.starts_with(path_str.as_ref()) && path_str.starts_with("/dev/") {
+            best_disk = Some(disk);
+            break;
+        }
+
+        if path.starts_with(disk.mount_point()) {
+            let len = disk.mount_point().as_os_str().len();
+            if len > max_len {
+                max_len = len;
+                best_disk = Some(disk);
+            }
+        }
+    }
+
+    let actual_path = if let Some(disk) = &best_disk {
+        let p_str = path.to_string_lossy();
+        if p_str.starts_with("/dev/") || p_str.starts_with("\\\\.\\") {
+            path.clone()
+        } else {
+            #[cfg(target_os = "linux")]
+            {
+                let dev_name = disk.name().to_string_lossy();
+                PathBuf::from(dev_name.trim_end_matches(char::is_numeric))
+            }
+            #[cfg(target_os = "windows")]
+            {
+                disk.mount_point().to_path_buf()
+            }
+            #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+            {
+                path.clone()
+            }
+        }
+    } else {
+        path.clone()
+    };
+
+    let capacity = match rindrive_core::platforms::open_drive(&actual_path.to_string_lossy()) {
+        Ok(drive) => format!("{:.2} GB", drive.size() as f64 / 1_000_000_000.0),
+        Err(_) => best_disk.map_or("-- GB".to_string(), |disk| {
+            format!("{:.1} GB", disk.total_space() as f64 / 1_000_000_000.0)
+        }),
+    };
+
+    // 2. NUSB resolution
+    let mut hw_name = String::new();
+    let mut hw_info = None;
+
+    if let Ok(devices_iter) = nusb::list_devices().wait() {
+        let devices: Vec<_> = devices_iter.collect();
+        for dev in devices.into_iter().rev() {
+            let mut is_mass_storage = dev.class() == 8;
+            if !is_mass_storage {
+                for interface in dev.interfaces() {
+                    if interface.class() == 8 {
+                        is_mass_storage = true;
+                        break;
+                    }
+                }
+            }
+            if is_mass_storage {
+                let mfg = dev.manufacturer_string().map(|s| s.trim().to_string());
+                let prod = dev.product_string().map(|s| s.trim().to_string());
+
+                let full_name = format!(
+                    "{} {}",
+                    mfg.as_deref().unwrap_or(""),
+                    prod.as_deref().unwrap_or("")
+                )
+                .trim()
+                .to_string();
+
+                if full_name.len() > 2 {
+                    hw_name = full_name;
+                    hw_info = Some(UsbHardwareInfo {
+                        manufacturer: mfg,
+                        product: prod,
+                        speed: dev.speed(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    DriveInfoResult {
+        actual_path,
+        drive_name: if hw_name.is_empty() {
+            fl!("unknown-drive").to_string()
+        } else {
+            hw_name
+        },
+        drive_capacity: capacity,
+        usb_info: hw_info,
     }
 }
