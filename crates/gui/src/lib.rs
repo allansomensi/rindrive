@@ -3,6 +3,7 @@ use crate::app::App;
 mod app;
 mod message;
 mod state;
+mod update;
 mod view;
 mod worker;
 
