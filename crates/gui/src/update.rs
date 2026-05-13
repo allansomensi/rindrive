@@ -87,7 +87,6 @@ pub fn handle_message(app: &mut App, message: Message) -> Task<Message> {
             app.state = AppState::Ready;
             app.progress = 0.0;
             app.rebuild_block_map();
-
             Task::none()
         }
 
@@ -151,14 +150,6 @@ pub fn handle_message(app: &mut App, message: Message) -> Task<Message> {
         Message::Progress(pct, msg) => {
             app.progress = pct * 100.0;
             app.log = msg;
-
-            if app.selected_engine == EngineType::FullScan {
-                let block_idx = (pct * 100.0) as usize;
-                if block_idx < app.block_map.len() && app.block_map[block_idx] != 1 {
-                    app.block_map[block_idx] = 1;
-                    app.map_cache.clear();
-                }
-            }
             Task::none()
         }
 
@@ -194,7 +185,7 @@ pub fn handle_message(app: &mut App, message: Message) -> Task<Message> {
                     app.block_map = report
                         .integrity_map
                         .iter()
-                        .map(|&err| if err { 1 } else { 2 })
+                        .map(|&ok| if ok { 1 } else { 2 })
                         .collect();
 
                     app.map_cache.clear();
@@ -257,12 +248,10 @@ fn fetch_drive_info_sync(path: PathBuf) -> DriveInfoResult {
         path.clone()
     };
 
-    let capacity = match rindrive_core::platforms::open_drive(&actual_path.to_string_lossy()) {
-        Ok(drive) => format!("{:.2} GB", drive.size() as f64 / 1_000_000_000.0),
-        Err(_) => best_disk.map_or("-- GB".to_string(), |disk| {
-            format!("{:.1} GB", disk.total_space() as f64 / 1_000_000_000.0)
-        }),
-    };
+    let capacity = best_disk.map_or_else(
+        || "-- GB".to_string(),
+        |disk| format!("{:.1} GB", disk.total_space() as f64 / 1_000_000_000.0),
+    );
 
     // 2. NUSB resolution
     let mut hw_name = String::new();

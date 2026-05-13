@@ -16,7 +16,15 @@ where
     let total_bytes = drive.size();
     let block_size = buffer_size as u64;
     let total_blocks = total_bytes / block_size;
-    let mut results = vec![true; 100];
+
+    if total_blocks == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            fl!("error-drive-too-small"),
+        ));
+    }
+
+    let mut results = vec![false; 100];
 
     // 1. Write
     for i in 0..total_blocks {
@@ -37,7 +45,7 @@ where
         drive.write_at(offset, slice)?;
     }
 
-    // Read and verify
+    // 2. Read and verify
     let mut errors_found = false;
     let mut last_valid_block = 0;
 

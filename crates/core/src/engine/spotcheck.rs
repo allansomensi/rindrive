@@ -30,8 +30,16 @@ where
     }
 
     let total_sectors = total_bytes / 512;
-    let area_size = total_sectors / sections as u64;
     let sectors_per_buffer = (buffer_size as u64 + 511).div_ceil(512);
+
+    if sections as u64 > total_sectors.saturating_sub(sectors_per_buffer) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            fl!("error-too-many-sections"),
+        ));
+    }
+
+    let area_size = total_sectors / sections as u64;
 
     let test_points: Vec<u64> = (0..sections)
         .map(|i| {

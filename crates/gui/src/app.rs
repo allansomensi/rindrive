@@ -126,7 +126,7 @@ impl App {
                 self.buffer_size_input = MIN_BUFFER_SIZE.to_string();
             }
         } else {
-            self.buffer_size_input = "1048576".to_string(); // 1MB fallback
+            self.buffer_size_input = DEFAULT_BUFFER_SIZE.to_string();
         }
     }
 }

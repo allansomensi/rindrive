@@ -153,7 +153,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         btn.into()
     };
 
-    let mut start_btn = match app.state {
+    let start_btn = match app.state {
         AppState::Auditing => button(
             text(fl!("btn-cancel-audit"))
                 .size(14)
@@ -164,6 +164,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         .padding(12)
         .width(Length::Fill)
         .on_press(Message::CancelAudit),
+
         AppState::Cancelling => button(
             text(fl!("btn-cancelling"))
                 .size(14)
@@ -173,6 +174,7 @@ pub fn view(app: &App) -> Element<'static, Message> {
         .style(button::secondary)
         .padding(12)
         .width(Length::Fill),
+
         _ => {
             let btn = button(
                 text(fl!("btn-start-audit"))
@@ -191,10 +193,6 @@ pub fn view(app: &App) -> Element<'static, Message> {
             }
         }
     };
-
-    if matches!(app.state, AppState::Ready | AppState::Finished) {
-        start_btn = start_btn.on_press(Message::StartAudit);
-    }
 
     let progress_section = column![
         row![

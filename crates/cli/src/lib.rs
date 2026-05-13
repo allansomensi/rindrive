@@ -96,9 +96,7 @@ fn perform_audit(mount_point: &str, args: &Args) -> Result<(), CliError> {
                 args.buffer_size,
                 |msg, pct, _block_update| {
                     pb.set_message(msg.to_string());
-                    let position = (pct * 10000.0) as u64;
-                    pb.set_position(position);
-
+                    pb.set_position((pct * 10000.0) as u64);
                     true
                 },
             );
@@ -114,8 +112,31 @@ fn perform_audit(mount_point: &str, args: &Args) -> Result<(), CliError> {
 
             display::render_report(&report);
         }
+
         EngineType::FullScan => {
-            todo!()
+            display::print_info(&fl!("cli-engine-label"), &fl!("cli-engine-info-fullscan"));
+            println!();
+
+            let pb = display::create_audit_progress_bar();
+            pb.enable_steady_tick(Duration::from_millis(100));
+
+            let report_result =
+                engine::fullscan::run(&mut *drive, args.buffer_size, |msg, pct, _block_update| {
+                    pb.set_message(msg.to_string());
+                    pb.set_position((pct * 10000.0) as u64);
+                    true
+                });
+
+            pb.finish_and_clear();
+
+            let report = report_result.map_err(|e| {
+                rindrive_core::error::AuditError::Platform(fl!(
+                    "cli-engine-failure",
+                    error = e.to_string()
+                ))
+            })?;
+
+            display::render_report(&report);
         }
     }
 

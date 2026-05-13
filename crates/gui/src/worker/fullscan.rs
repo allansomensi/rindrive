@@ -21,9 +21,14 @@ pub fn run(
                 let res = engine::fullscan::run(&mut *drive, buffer, |msg, pct, _| {
                     let _ = tx.send(Message::Progress(pct, msg));
 
-                    let block_idx = (pct * 100.0) as usize;
+                    let (phase_pct, status) = if pct < 0.5 {
+                        (pct * 2.0, 4u8)
+                    } else {
+                        ((pct - 0.5) * 2.0, 3u8)
+                    };
+                    let block_idx = (phase_pct * 100.0) as usize;
                     if block_idx < 100 {
-                        let _ = tx.send(Message::BlockUpdated(block_idx, 1));
+                        let _ = tx.send(Message::BlockUpdated(block_idx, status));
                     }
 
                     !cancel_flag.load(Ordering::Relaxed)
